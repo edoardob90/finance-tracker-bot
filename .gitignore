@@ -1,0 +1,6 @@
+examples
+.env
+*.json
+__pycache__
+venv
+*.code-workspace
