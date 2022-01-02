@@ -178,17 +178,18 @@ def data_to_str(user_data: Dict[str, Any]) -> str:
 def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
     """
     Helper function to correctly parse a detail of a new record.
-    A new record contains:
-        - a `Date`: should be parsed and formatted as DD/MM/YYYY
-        - an `Amount`: should be a float with +/- sign
-        - a `Reason`: just a string
-        - an `Account`: a string that should be restricted among a predefined choice 
     """
     if key == 'date':
         user_data['date'] = parse(value).strftime("%d/%m/%Y")
     elif key == 'amount':
-        amount, cur = value.split()
-        cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'XXX'
+        try:
+            amount, cur = value.split()
+        except ValueError:
+            # error is raised if no currency is present
+            amount = value
+            cur = 'X'
+        else:
+            cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'X'
         user_data[key] = float(amount)
         user_data['currency'] = cur
     else:
@@ -464,13 +465,13 @@ def main() -> None:
             ],
             CHOICE: [
                 MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^Save$')),
+                    Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
                     prompt_record
                 )
             ],
             REPLY: [
                 MessageHandler(
-                   Filters.text & ~(Filters.command | Filters.regex('^Save$')),
+                   Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
                    store_record 
                 )
             ]
@@ -501,13 +502,13 @@ def main() -> None:
             ],
             CHOICE: [
                 MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^Done$')),
+                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
                     auth_prompt
                 )
             ],
             REPLY: [
                 MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^Done$')),
+                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
                     auth_store
                 )
             ]
