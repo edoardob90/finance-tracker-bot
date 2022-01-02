@@ -8,12 +8,11 @@ import html
 import json
 import logging
 import pathlib
-from typing import Dict, Any
+from typing import Dict, Any, OrderedDict
 
 from dotenv import load_dotenv
 from datetime import datetime as dt
 from dateutil.parser import parse, ParserError
-from google.oauth2 import credentials
 
 import gspread
 from google_auth_oauthlib.flow import Flow
@@ -35,6 +34,7 @@ from telegram.ext import (
     Filters,
     ConversationHandler,
     CallbackContext,
+    PicklePersistence,
 )
 from telegram.utils.helpers import escape_markdown
 
@@ -62,9 +62,16 @@ CHOOSING, CHOICE, REPLY = range(3)
 # Path to Google API client secret file
 CREDS = os.environ.get("CREDS_FILE", "credentials.json")
 
+# Currencies supported
+CURRENCIES = dict((
+    ('E', 'EUR'),
+    ('U', 'USD'),
+    ('C', 'CHF')
+))
+
 # Reply markup for keyboards
 record_kb = [
-    ['Date', 'Amount', 'Reason', 'Account'],
+    ['Date', 'Reason', 'Amount', 'Account'],
     ['Save', 'Cancel']
 ]
 reply_kb = ReplyKeyboardMarkup(record_kb, one_time_keyboard=True)
@@ -107,12 +114,12 @@ def error_handler(update: Update, context: CallbackContext) -> int:
 
 def print_help(update: Update, context: CallbackContext) -> None:
     """Print help message and a command list"""
-    user_name = update.message.from_user.name
+    user_name = update.message.from_user.first_name
     update.message.reply_text(
-        f"""Hello {user_name}\! I'm a bot that wants to help you with you personal finances\. This is what I can do for you:
+        f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
 \- `/summary`: get a summary of your spreadsheet data \(*coming soon*\)
-\- `/auth`: connect me to Google Sheets with your Google account \(should be done only *once*\)""",
+\- `/auth`: connect to Google Sheets with your Google account \(should be done *first and only once*\)""",
     parse_mode=ParseMode.MARKDOWN_V2
     )
 
@@ -126,14 +133,22 @@ def start_record(update: Update, context: CallbackContext) -> int:
     # Initialize user_data
     user_data = context.user_data
     if not 'record' in user_data:
-        user_data['record'] = {}
+        user_data['record'] = OrderedDict.fromkeys(
+            ('date',
+            'reason',
+            'amount',
+            'currency',
+            'account')
+        )
     
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     update.message.reply_text(
         """Record a new expense/income\. *Remember* the follwing rules on the input data:
-\- `Date` should be written as `dd-mm-yyyy` or `dd mm yyyy` or `dd mm yy`
-\- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*""",
+\- `Date` should be written as `dd-mm-yyyy` or `dd mm yyyy` or `dd mm yy`\. Example: `21-12-2021`
+\- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*\. """
+"""Example: `-150.0 EUR` means an expense of 150 euros\.
+\- Currencies supported: EUR, CHF, USD\. You can also enter *a single letter*: E \= EUR, C \= CHF, U \= USD\.""",
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=reply_kb
     )
@@ -172,7 +187,10 @@ def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
     if key == 'date':
         user_data['date'] = parse(value).strftime("%d/%m/%Y")
     elif key == 'amount':
-        user_data[key] = float(value)
+        amount, cur = value.split()
+        cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'XXX'
+        user_data[key] = float(amount)
+        user_data['currency'] = cur
     else:
         user_data[key] = str(value)
     
@@ -205,8 +223,8 @@ def start_summary(update: Update, context: CallbackContext) -> int:
     update.message.reply_text("This is currently not implemented, sorry :-(")
     return ConversationHandler.END
 
-def done(update: Update, context: CallbackContext) -> int:
-    """Display the gathered info and stop the conversation"""
+def save_record(update: Update, context: CallbackContext) -> int:
+    """Display the gathered info, save them to the spreadsheet, and stop the conversation"""
     user_data = context.user_data.get('record')
    
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
@@ -214,29 +232,35 @@ def done(update: Update, context: CallbackContext) -> int:
     if 'choice' in user_data:
         del user_data['choice']
 
-    
     # Get the auth_data
     auth_data = context.user_data.get('auth')
 
     # Append the record to the spreadsheet
-    if auth_data['auth_is_done'] and auth_data['spreadsheet_is_set']:
+    if auth_data['auth_is_done'] and auth_data['spreadsheet']['is_set']:
         values = list(user_data.values())
         values.append(
             dt.now().strftime("%d.%m.%Y, %H:%M")
         )
 
+        # FIXME: a Client is created *every time* a user saves a new record and that's poorly efficient
+        # But I don't know where to store it. The persistency classes of python-telegram-bot library don't support classes
+        creds = oauth(update=update, credentials_file=CREDS, token_file=auth_data['token_file'])
+        client = gspread.Client(auth=creds)
+        ss = spreadsheet.Spreadsheet(client,
+                                    spreadsheet_id=auth_data['spreadsheet']['id'],
+                                    sheet_name=auth_data['spreadsheet']['sheet_name'])
         try:
-            ss = auth_data['spreadsheet'].append_record(values)
+            response = ss.append_record(values)
         except:
             logger.error("Something went wrong while appending the record to the spreadsheet.")
             update.message.reply_text("Something went wrong while appending the record to the spreadsheet :-(")
             raise
         
-        if 'updates' in ss and ss['updates']:
-            update.message.reply_text(f"""For info, this is the record just appended to the spreadsheet:
+        if 'updates' in response and response['updates']:
+            update.message.reply_text(f"""This is the record just appended to the spreadsheet:
 {data_to_str(user_data)}
 
-You can add a new record with the command `/record`\. Bye\!""",
+You can add a new record with the command `/record`\. 👋""",
                 reply_markup=ReplyKeyboardRemove(),
                 parse_mode=ParseMode.MARKDOWN_V2
             )
@@ -313,10 +337,6 @@ def oauth(update: Update,
 
 def start_auth(update: Update, context: CallbackContext) -> int:
     """Start the authorization flow for Google Spreadsheet"""
-    update.message.reply_text("Requesting authorization to access Google Sheets\. If it's a new login, you need to approve the access by entering an authorization code\.",
-    parse_mode=ParseMode.MARKDOWN_V2,
-    reply_markup=reply_auth_kb)
-
     # Fetch the user_data dict. Initialize if necessary
     user_data = context.user_data
     if 'auth' not in user_data:
@@ -325,9 +345,14 @@ def start_auth(update: Update, context: CallbackContext) -> int:
 
     # Check if the auth step has been already done
     if user_data and user_data.get('auth_is_done'):
-        update.message.reply_text("Authentication has already been completed\. You can add records with the `/record` command or query your data with `\summary`\. Use `/cancel` to stop\.",
-        parse_mode=ParseMode.MARKDOWN_V2)
+        update.message.reply_text("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. Use `/cancel` to stop\.",
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=ReplyKeyboardRemove())
     else: 
+        update.message.reply_text("Requesting authorization to access Google Sheets\. If it's a new login, you need to approve the access by entering an authorization code\.",
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=reply_auth_kb)
+        
         user_data['auth_is_done'] = False
 
         # Each user must have a unique token file
@@ -364,39 +389,38 @@ def auth_store(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     data = user_data['choice']
     del user_data['choice']
-    
-    logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     if  data == 'auth code' and not user_data['auth_is_done']:
         creds = oauth(update=update, credentials_file=CREDS, token_file=user_data['token_file'], code=text)
-        client = gspread.Client(auth=creds)
-        ss = spreadsheet.Spreadsheet(client=client)
-        user_data['spreadsheet'] = ss
-        user_data['spreadsheet_is_set'] = False
-        user_data['auth_is_done'] = True
-    else:
-        if user_data['auth_is_done']:
-            ss = user_data['spreadsheet']
-            if data == 'spreadsheet id':
-                ss.spreadsheet_id = text
-            if data == 'sheet name':
-                ss.sheet_name = text
-            
-            if ss.spreadsheet_id and ss.sheet_name:
-                user_data['spreadsheet_is_set'] = True
-        else:
-            update.message.reply_text("Cannot set 'Spreadsheet ID' or 'Sheet Name' if authorization is incomplete! Please, enter the 'Auth Code' first.", reply_markup=reply_auth_kb)
-            return CHOOSING
+        # client = gspread.Client(auth=creds)
+        # ss = spreadsheet.Spreadsheet(client=client)
+        # user_data['spreadsheet'] = ss
+        user_data['spreadsheet'] = {
+            'is_set': False,
+            'id': '',
+            'sheet_name': ''
+        }
+        if creds:
+            user_data['auth_is_done'] = True
+    elif data == 'spreadsheet id':
+        user_data['spreadsheet']['id'] = text
+    elif data == 'sheet name':
+        user_data['spreadsheet']['sheet_name'] = text
+
+    if user_data['spreadsheet']['id'] and user_data['spreadsheet']['sheet_name']:
+        user_data['spreadsheet']['is_set'] = True
 
     update.message.reply_text(f"*{data.capitalize()}* has been set\!", parse_mode=ParseMode.MARKDOWN_V2)
+    
+    logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     return CHOOSING
 
-def done_auth(update: Update, context: CallbackContext) -> int:
+def auth_done(update: Update, context: CallbackContext) -> int:
     """Ends the auth conversation"""
     user_data = context.user_data.get('auth')
 
-    if user_data['auth_is_done'] and user_data['spreadsheet_is_set']:
+    if user_data['auth_is_done'] and user_data['spreadsheet']['is_set']:
         update.message.reply_text("Authorization is complete\! Use `/help` to know about the other commands\.",
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=ReplyKeyboardRemove())
@@ -411,7 +435,11 @@ def main() -> None:
     
     # Create an Updater with the bot's token
     TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-    updater = Updater(TOKEN)
+    persistence = PicklePersistence(filename='finance_tracker',
+                                    single_file=False,
+                                    store_chat_data=False,
+                                    store_bot_data=False)
+    updater = Updater(TOKEN, persistence=persistence)
     
     # Get a dispatcher to register handlers
     dispatcher = updater.dispatcher
@@ -448,11 +476,12 @@ def main() -> None:
             ]
             },
         fallbacks=[
-            MessageHandler(Filters.regex('^Save$'), done),
+            MessageHandler(Filters.regex('^Save$'), save_record),
             MessageHandler(Filters.regex('^Cancel$'), cancel),
             CommandHandler("cancel", cancel),
         ],
-        name="main_conversation"
+        name="main_conversation",
+        persistent=False
     )
 
     # The main conversation handler
@@ -484,11 +513,12 @@ def main() -> None:
             ]
         },
         fallbacks=[
-            MessageHandler(Filters.regex('^Done$'), done_auth),
+            MessageHandler(Filters.regex('^Done$'), auth_done),
             MessageHandler(Filters.regex('^Cancel$'), cancel),
             CommandHandler('cancel', cancel)
         ],
-        name="auth_conversation"
+        name="auth_conversation",
+        persistent=False
     )
 
     dispatcher.add_handler(auth_handler)

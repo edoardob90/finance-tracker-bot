@@ -1,4 +1,3 @@
-import os
 from typing import List, NoReturn
 
 import gspread
@@ -16,15 +15,15 @@ class SpreadsheetError(Exception):
 
 class Spreadsheet():
     """A class for a Google Spreasheet object"""
-    def __init__(self, client):
+    def __init__(self, client, spreadsheet_id=None, sheet_name=None):
         # A valid gspread Client
-        self.client = client
+        self._client: gspread.Client = client
         # Properties
-        self._spreadsheet_id = None
-        self._sheet_name = None
-        self._range = None
-        self._sheet = None
-        self._records = None
+        self._spreadsheet_id: str = spreadsheet_id # the spreadsheet ID
+        self._sheet_name: str = sheet_name # the sheet name
+        self._range: str = None # the table range
+        self._sheet: gspread.spreadsheet.Spreadsheet = None
+        self._records: List = None
 
     # Properties with accessors
     @property
@@ -47,7 +46,7 @@ class Spreadsheet():
     @property
     def sheet(self) -> gspread.spreadsheet.Spreadsheet:
         try:
-            doc = self.client.open_by_key(self.spreadsheet_id)
+            doc = self._client.open_by_key(self.spreadsheet_id)
             sheet = doc.worksheet(self.sheet_name)
         except APIError:
             raise SpreadsheetError("Spreadsheet ID {} was not found.".format(self.spreadsheet_id))
