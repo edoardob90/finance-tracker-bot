@@ -527,7 +527,6 @@ def main() -> None:
     # Helpers handlers
     help_handler = CommandHandler("help", print_help)
     dispatcher.add_handler(help_handler)
-    dispatcher.add_handler(auth_handler)
     
     # Error handler
     dispatcher.add_error_handler(error_handler)
