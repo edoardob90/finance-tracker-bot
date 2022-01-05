@@ -7,22 +7,26 @@ import html
 import json
 import logging
 from dotenv import load_dotenv
+from datetime import datetime as dt
+from zoneinfo import ZoneInfo
 from dateutil.parser import ParserError
 from telegram import (
     Update,
-    ReplyKeyboardRemove,
-    ParseMode
+    ParseMode,
 )
 from telegram.ext import (
     Updater,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     Filters,
     ConversationHandler,
     CallbackContext,
     PicklePersistence,
 )
+
 from constants import *
+from utils import remove_job_if_exists
 import record
 import auth
 import summary
@@ -67,7 +71,7 @@ def error_handler(update: Update, context: CallbackContext) -> int:
 
     return CHOOSING
 
-def start(update: Update, _: CallbackContext) -> None:
+def start(update: Update, context: CallbackContext) -> None:
     """Print help message and a command list"""
     user_name = update.message.from_user.first_name
     update.message.reply_text(
@@ -77,12 +81,28 @@ def start(update: Update, _: CallbackContext) -> None:
 \- `/auth`: connect to Google Sheets with your Google account \(should be done *first and only once*\)""",
     parse_mode=ParseMode.MARKDOWN_V2
     )
+    
+    # Setup a daily task to append to the spreadsheet all the records added so far
+    user_id = update.message.from_user.id
+    remove_job_if_exists(str(user_id), context)
+    context.job_queue.run_once(
+        record.add_to_spreadsheet,
+        # time=dt.now(tz=ZoneInfo("Europe/Rome")).timetz(),
+        when=90,
+        context=(user_id, context.user_data),
+        name=str(user_id)
+    )
+    
+    logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
+    
 
-def cancel(update: Update, context: CallbackContext) -> int:
+def cancel(update: Update, _: CallbackContext) -> int:
     """Cancel the current action"""
-    update.message.reply_text("Action has been cancelled\. Start again with the `/record` or `/summary` commands\. Bye\!",
-    parse_mode=ParseMode.MARKDOWN_V2,
-    reply_markup=ReplyKeyboardRemove())
+    text = "Action has been cancelled\. Start again with the `/record` or `/summary` commands\. Bye\!"
+    if update.callback_query:
+        update.callback_query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        update.message.reply_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
 
     return ConversationHandler.END
 
@@ -108,33 +128,33 @@ def main() -> None:
 
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('record', record.start_record),
-            CommandHandler('summary', summary.start_summary)
-            ],
+            CommandHandler('record', record.start),
+            CommandHandler('summary', summary.start),
+            CommandHandler('show_data', record.show_data)
+        ],
         states={
             CHOOSING: [
-                MessageHandler(
-                    Filters.regex('^(Date|Amount|Reason|Account)$'),
-                    record.prompt_record
-                )
-            ],
-            CHOICE: [
-                MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
-                    record.prompt_record
-                )
+                CallbackQueryHandler(
+                    record.prompt,
+                    pattern='^' + '$|^'.join(map(str, range(4))) + '$'
+                    # [
+                    #   '0': 'Date', '1': 'Amount', '2': 'Reason', '3': 'Account' <-- ROW_1
+                    #   '4': 'Save', '5': 'Cancel' <-- ROW_2
+                    # ]
+                ),
+                CallbackQueryHandler(record.save, pattern='^4$'),
+                CallbackQueryHandler(cancel, pattern='^5$')
             ],
             REPLY: [
                 MessageHandler(
                    Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
-                   record.store_record 
+                   record.store
                 )
             ]
-            },
+        },
         fallbacks=[
-            MessageHandler(Filters.regex('^Save$'), record.save_record),
-            MessageHandler(Filters.regex('^Cancel$'), cancel),
-            CommandHandler("cancel", cancel),
+            CommandHandler('cancel', record.cancel),
+            CommandHandler('show_data', record.show_data)
         ],
         name="main_conversation",
         persistent=False
@@ -146,32 +166,33 @@ def main() -> None:
     # The auth conversation handler
     auth_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('auth', auth.start_auth)
+            CommandHandler('auth', auth.start)
         ],
         states={
             CHOOSING: [
                 MessageHandler(
                     Filters.regex('^(Auth code|Spreadsheet ID|Sheet name)$'),
-                    auth.auth_prompt
+                    auth.prompt
                 )
             ],
             CHOICE: [
                 MessageHandler(
                     Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
-                    auth.auth_prompt
+                    auth.prompt
                 )
             ],
             REPLY: [
                 MessageHandler(
                     Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
-                    auth.auth_store
+                    auth.store
                 )
             ]
         },
         fallbacks=[
-            MessageHandler(Filters.regex('^Done$'), auth.auth_done),
+            MessageHandler(Filters.regex('^Done$'), auth.done),
             MessageHandler(Filters.regex('^Cancel$'), cancel),
-            CommandHandler('cancel', cancel)
+            CommandHandler('cancel', cancel),
+            CommandHandler('reset', auth.reset)
         ],
         name="auth_conversation",
         persistent=False

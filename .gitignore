@@ -5,3 +5,5 @@ __pycache__
 venv
 *.code-workspace
 *_data
+gs_test.py
+scratch.txt
