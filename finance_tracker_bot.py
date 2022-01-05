@@ -7,8 +7,7 @@ import html
 import json
 import logging
 from dotenv import load_dotenv
-from datetime import datetime as dt
-from zoneinfo import ZoneInfo
+from datetime import time
 from dateutil.parser import ParserError
 from telegram import (
     Update,
@@ -64,7 +63,7 @@ def error_handler(update: Update, context: CallbackContext) -> int:
 
     # Which kind of error?
     if isinstance(context.error, ParserError):
-        update.message.reply_text("Whoa! You didn't enter a valid date. Try again.")
+        update.message.reply_text("You entered an invalid date. Try again.")
     
     if developer_user_id:
         context.bot.send_message(chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML)
@@ -84,13 +83,12 @@ def start(update: Update, context: CallbackContext) -> None:
     
     # Setup a daily task to append to the spreadsheet all the records added so far
     user_id = update.message.from_user.id
-    remove_job_if_exists(str(user_id), context)
-    context.job_queue.run_once(
+    remove_job_if_exists(str(user_id) + '_append_data', context)
+    context.job_queue.run_daily(
         record.add_to_spreadsheet,
-        # time=dt.now(tz=ZoneInfo("Europe/Rome")).timetz(),
-        when=90,
+        time=time(22, 59), # UTC time
         context=(user_id, context.user_data),
-        name=str(user_id)
+        name=str(user_id) + '_append_data'
     )
     
     logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
@@ -130,7 +128,9 @@ def main() -> None:
         entry_points=[
             CommandHandler('record', record.start),
             CommandHandler('summary', summary.start),
-            CommandHandler('show_data', record.show_data)
+            CommandHandler('show_data', record.show_data),
+            CommandHandler('clear_data', record.clear),
+            CommandHandler('append_data', record.force_add_to_spreadsheet)
         ],
         states={
             CHOOSING: [
@@ -154,7 +154,9 @@ def main() -> None:
         },
         fallbacks=[
             CommandHandler('cancel', record.cancel),
-            CommandHandler('show_data', record.show_data)
+            CommandHandler('show_data', record.show_data),
+            CommandHandler('clear_data', record.clear),
+            CommandHandler('append_data', record.force_add_to_spreadsheet)
         ],
         name="main_conversation",
         persistent=False
@@ -166,20 +168,18 @@ def main() -> None:
     # The auth conversation handler
     auth_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('auth', auth.start)
+            CommandHandler('auth', auth.start),
+            CommandHandler('auth_data', auth.show_data),
+            CommandHandler('reset', auth.reset)
         ],
         states={
             CHOOSING: [
-                MessageHandler(
-                    Filters.regex('^(Auth code|Spreadsheet ID|Sheet name)$'),
-                    auth.prompt
-                )
-            ],
-            CHOICE: [
-                MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
-                    auth.prompt
-                )
+                CallbackQueryHandler(
+                    auth.prompt,
+                    pattern='^' + '$|^'.join(map(str, range(3))) + '$' # 'Auth code', 'Spreadsheet ID', 'Sheet name' buttons
+                ),
+                CallbackQueryHandler(auth.done, pattern='^3$'), # 'Done' button
+                CallbackQueryHandler(cancel, pattern='^4$') # 'Cancel' button
             ],
             REPLY: [
                 MessageHandler(
@@ -189,10 +189,9 @@ def main() -> None:
             ]
         },
         fallbacks=[
-            MessageHandler(Filters.regex('^Done$'), auth.done),
-            MessageHandler(Filters.regex('^Cancel$'), cancel),
             CommandHandler('cancel', cancel),
-            CommandHandler('reset', auth.reset)
+            CommandHandler('reset', auth.reset),
+            CommandHandler('auth_data', auth.show_data)
         ],
         name="auth_conversation",
         persistent=False

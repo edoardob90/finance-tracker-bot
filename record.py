@@ -5,8 +5,6 @@ import logging
 from typing import OrderedDict, Dict, Any, List, Tuple
 from copy import deepcopy
 from datetime import datetime as dt
-from zoneinfo import ZoneInfo
-from dateutil.parser import parse
 from telegram import (
     Update,
     ParseMode,
@@ -16,19 +14,30 @@ from telegram.ext import (
     ConversationHandler,
     CallbackContext,
 )
-from telegram.utils.helpers import escape_markdown
 import gspread
 
 from constants import *
-from utils import inline_kb_row
+from utils import (
+    inline_kb_row,
+    parse_data,
+    data_to_str,
+    remove_job_if_exists
+)
 import auth
 import spreadsheet
 
 # Enable logging
-logging.basicConfig(
-    format=log_format, level=log_level
-)
+logging.basicConfig(format=log_format, level=log_level)
 logger = logging.getLogger(__name__)
+
+# A new record's fields
+RECORD_KEYS = ('date',
+            'reason',
+            'amount',
+            'currency',
+            'account',
+            'recorded_on'
+            )
 
 # Inline keyboard
 ROW_1 = ('Date', 'Reason', 'Amount', 'Account')
@@ -45,34 +54,6 @@ record_inline_kb = [
     inline_kb_row(ROW_2, offset=len(ROW_1))
 ]
 
-# Utils
-def data_to_str(user_data: Dict[str, Any]) -> str:
-    """Build a string concatenating all the user data"""
-    facts = [f"*{key}:* {escape_markdown(str(value), version=2)}" for key, value in user_data.items()]
-    
-    return "\n".join(facts)
-
-def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
-    """Helper function to correctly parse a detail of a new record"""
-    if key == 'date':
-        user_data['date'] = parse(value).strftime("%d/%m/%Y")
-    elif key == 'amount':
-        try:
-            amount, cur = value.split()
-        except ValueError:
-            # error is raised if no currency is present
-            amount = value
-            cur = 'X'
-        else:
-            cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'X'
-        user_data[key] = float(amount)
-        user_data['currency'] = cur
-    else:
-        user_data[key] = str(value)
-    
-    return user_data
-
-# Bot functions 
 def start(update: Update, context: CallbackContext) -> int:
     """Ask the user the details of a new record"""
     update.message.reply_text(
@@ -89,14 +70,7 @@ def start(update: Update, context: CallbackContext) -> int:
     user_data = context.user_data
     if 'record' not in user_data:
         # a single empty record
-        user_data['record'] = OrderedDict.fromkeys(
-            ('date',
-            'reason',
-            'amount',
-            'currency',
-            'account',
-            'recorded_on')
-        )
+        user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
     # the list of all the records to append
     if 'records' not in user_data:
         user_data['records'] = []
@@ -159,22 +133,14 @@ def save(update: Update, context: CallbackContext) -> int:
 
     query.answer()
     query.edit_message_text(
-        text=f"""This is the record just saved:
-{data_to_str(record)}
-
-You can add a new record with the command `/record`\. 👋""",
+        text=f"This is the record just saved:\n\n{data_to_str(record)}\n"
+              "You can add a new record with the command `/record`\. 👋",
         parse_mode=ParseMode.MARKDOWN_V2
     )
     
     # Reset the current record to an empty record
-    record = OrderedDict.fromkeys(
-            ('date',
-            'reason',
-            'amount',
-            'currency',
-            'account',
-            'recorded_on')
-        )
+    record.clear()
+    # context.user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
     
     logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
@@ -207,6 +173,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
 
     if not records:
         logger.info(f"Skipping scheduled task for user_id {user_id}: no records to append.")
+        context.bot.send_message(user_id, "Skipping append task: no records to append.", disable_notification=True)
     else:
         # Get the auth_data
         auth_data = user_data.get('auth')
@@ -230,18 +197,44 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
                     context.bot.send_message(user_id, text="Something went wrong while appending the record to the spreadsheet :-(", show_alert=True)
                     raise
             else:
-                records.clear()
-                context.bot.send_message(user_id,
+                context.bot.send_message(
+                    user_id,
                     text="On {}, *{}* records have been successfully added to the spreadsheet\."
-                        .format(dt.now().strftime("%d/%m/%Y, %H:%M"), len(user_data)),
-                    parse_mode=ParseMode.MARKDOWN_V2
+                        .format(dt.now().strftime("%d/%m/%Y, %H:%M"), len(records)),
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    disable_notification=True
                 )
+                records.clear()
         else:
             context.bot.send_message(user_id, text="Cannot add records to the spreadsheet because the authorization was incomplete or you did not set the spreadsheet ID and/or name\. "
             "Use the command `/auth` complete the authentication or `/reset` to set the spreadsheet ID and/or name\.",
             parse_mode=ParseMode.MARKDOWN_V2)
 
     return None
+
+def force_add_to_spreadsheet(update: Update, context: CallbackContext) -> None:
+    """Force the append to the spreadsheet"""
+    user_id = update.message.from_user.id
+
+    remove_job_if_exists(str(user_id) + '_force_append_data', context)
+    context.job_queue.run_once(
+        add_to_spreadsheet,
+        when=1,
+        context=(user_id, context.user_data),
+        name=str(user_id) + '_force_append_data',
+    )
+
+    return None
+
+def clear(update: Update, context: CallbackContext) -> int:
+    """Manually clear the records"""
+    records = context.user_data.get('records')
+    
+    if records:
+        update.message.reply_text(f"{len(records)} records have been cleared.")
+        records.clear()
+
+    return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
     """Cancel the current `/record` action"""
