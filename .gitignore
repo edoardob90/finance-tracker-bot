@@ -7,3 +7,4 @@ venv
 *_data
 gs_test.py
 scratch.txt
+.python_version
