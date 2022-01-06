@@ -2,6 +2,7 @@
 Constants
 """
 import os
+from os.path import join, dirname
 import logging
 
 # Logging
@@ -15,7 +16,7 @@ log_level = logging.DEBUG
 CHOOSING, CHOICE, REPLY = range(3)
 
 # Path to Google API client secret file
-CREDS = os.environ.get("CREDS_FILE", "credentials.json")
+CREDS = os.environ.get("CREDS_FILE", join(dirname(__file__), "credentials.json"))
 
 # Currencies supported
 CURRENCIES = dict((

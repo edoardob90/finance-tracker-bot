@@ -8,3 +8,4 @@ venv
 gs_test.py
 scratch.txt
 .python_version
+.python-version
