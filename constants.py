@@ -3,11 +3,10 @@ Constants
 """
 import os
 from os.path import join, dirname, exists
-import logging
 
 # Logging
 log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-log_level = logging.DEBUG
+log_level = os.environ.get('LOG_LEVEL', 'INFO')
 
 # The three conversation states:
 # CHOOSING = 0
