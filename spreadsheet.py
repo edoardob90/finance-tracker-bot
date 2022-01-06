@@ -3,9 +3,6 @@ from typing import List, NoReturn
 import gspread
 from gspread.exceptions import APIError
 
-# DOCUMENT_ID = os.environ.get('GOOGLE_SHEET_ID')
-# RANGE = os.environ.get('RANGE')
-# SHEET_NAME = os.environ.get('SHEET_NAME')
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
