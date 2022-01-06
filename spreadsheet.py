@@ -71,28 +71,3 @@ class Spreadsheet():
     def append_record(self, values: List):
         return self.sheet.append_row(values, value_input_option="USER_ENTERED", table_range=self.range)
 
-# def get_sheet(self):
-#     """The spreadsheet object retreived by ID"""
-#     try:
-#         doc = self.client.open_by_key(self.sheet_id) # instance of `gspread.models.Spreadsheet`
-#         self._sheet = doc.worksheet(self._sheet_name) # instance of `gspread.models.Worksheet`
-#         return self._sheet
-#     except APIError:
-#         raise SpreadsheetError("Spreadsheet with ID {} was not found.".format(self.sheet_id))
-
-# def get_records(self):
-#     """Get all the records of the spreadsheet"""
-#     self.records = self.get_sheet().get_all_records()
-#     return self.records
-
-# def append_record(self, values):
-#     """Append a record to the spreadsheet"""
-#     return self.get_sheet().append_row(values, value_input_option="USER_ENTERED", table_range=self.range)
-
-# def remove_record(self):
-#     """Remove a record from the spreadsheet"""
-#     pass
-
-# def update_record(self):
-#     """Edit a record of the spreadsheet"""
-#     pass

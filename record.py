@@ -133,7 +133,7 @@ def save(update: Update, context: CallbackContext) -> int:
 
     query.answer()
     query.edit_message_text(
-        text=f"This is the record just saved:\n\n{data_to_str(record)}\n"
+        text=f"This is the record just saved:\n\n{data_to_str(record)}\n\n"
               "You can add a new record with the command `/record`\. 👋",
         parse_mode=ParseMode.MARKDOWN_V2
     )
