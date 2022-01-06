@@ -103,7 +103,7 @@ def store(update: Update, context: CallbackContext) -> int:
     del user_data['choice']
 
     update.message.reply_text(
-        f"Done\! *{category.capitalize()}* has been recorded\. This is new record so far:\n"
+        f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n"
         f"{data_to_str(user_data)}",
         reply_markup=InlineKeyboardMarkup(record_inline_kb),
         parse_mode=ParseMode.MARKDOWN_V2
@@ -186,8 +186,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
             ss = spreadsheet.Spreadsheet(
                     client=client,
                     spreadsheet_id=auth_data['spreadsheet']['id'],
-                    sheet_name=auth_data['spreadsheet']['sheet_name'])
-            
+                    sheet_name=auth_data['spreadsheet']['sheet_name']) 
             try:
                 for record in records:
                     values = list(record.values())
