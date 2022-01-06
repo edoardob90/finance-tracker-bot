@@ -71,13 +71,17 @@ def error_handler(update: Update, context: CallbackContext) -> int:
     return CHOOSING
 
 def start(update: Update, context: CallbackContext) -> None:
-    """Print help message and a command list"""
+    """Start the bot"""
     user_name = update.message.from_user.first_name
     update.message.reply_text(
         f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
+
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
 \- `/summary`: get a summary of your spreadsheet data \(*coming soon*\)
-\- `/auth`: connect to Google Sheets with your Google account \(should be done *first and only once*\)""",
+\- `/auth`: connect to Google Sheets with your Google account
+
+Use the `/help` command to get a more extensive help\.
+""",
     parse_mode=ParseMode.MARKDOWN_V2
     )
     
@@ -92,7 +96,26 @@ def start(update: Update, context: CallbackContext) -> None:
     )
     
     logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
-    
+
+def print_help(update: Update, _: CallbackContext) -> None:
+    """Print a more detailed help message"""
+    help_msg = """*Main commands:*
+
+\- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed \(*yet*\) by the user\. You can force the append action with the `/append_data` command \(see below\)
+\- `/record`: record a new expense/income
+\- `/auth`: start or check the authorization process to access Google Sheets
+\- `/summary`: obtain a summary from your spreadsheet data \(*not implemented yet*\)
+\- `/help`: print this message
+
+*Other commands:*
+
+\- `/show_data`: print all the saved records not yet appended to the spreadsheet
+\- `/clear_data`: erase the saved records
+\- `/append_data`: immediately append all the saved records to the spreadsheet\. It will also remove all the records saved in the bot's local storage
+\- `/auth_data`: show the status of the authentication and the configured spreadsheet
+\- `/reset`: reset the spreadsheet\. You can change the ID and the sheet name where to append your data"""
+
+    update.message.reply_text(help_msg, parse_mode=ParseMode.MARKDOWN_V2)
 
 def cancel(update: Update, _: CallbackContext) -> int:
     """Cancel the current action"""
@@ -120,7 +143,7 @@ def main() -> None:
 
     # A couple of helpers handlers
     start_ = CommandHandler('start', start)
-    help_ = CommandHandler('help', start)
+    help_ = CommandHandler('help', print_help)
     dispatcher.add_handler(start_)
     dispatcher.add_handler(help_)
 
@@ -156,7 +179,8 @@ def main() -> None:
             CommandHandler('cancel', record.cancel),
             CommandHandler('show_data', record.show_data),
             CommandHandler('clear_data', record.clear),
-            CommandHandler('append_data', record.force_add_to_spreadsheet)
+            CommandHandler('append_data', record.force_add_to_spreadsheet),
+            CommandHandler('help', print_help)
         ],
         name="main_conversation",
         persistent=False
@@ -191,7 +215,8 @@ def main() -> None:
         fallbacks=[
             CommandHandler('cancel', cancel),
             CommandHandler('reset', auth.reset),
-            CommandHandler('auth_data', auth.show_data)
+            CommandHandler('auth_data', auth.show_data),
+            CommandHandler('help', print_help)
         ],
         name="auth_conversation",
         persistent=False

@@ -5,6 +5,16 @@ A Telegram bot that helps with your personal finances. It's an experimental and 
 1. Record an expense/income in a local, persistent storage
 2. Connect to a given Google Spreadsheet document via OAuth2
 
+## Setup
+
+Using Google Sheets API requires the authentication via OAuth2 and the user consent using a Google Account. The authentication token is retrieved by the bot during the auth step, but a credentials file (also known as "client secret" file) is required. The absolute path of this file should be stored in an environment variable named `CREDS_FILE`. If that variable is not set, the client secret filename is assumed to be `credentials.json` and placed in **the same directory of the bot**. The client secret file contains sensitive information, hence it should be kept in a safe location.
+
+### How to obtain a client secret file
+
+The first prerequisite is to have an account on Google Cloud Platform and an active project (create a new one if necessary).
+
+...
+
 ## Usage
 
 Main commands:
@@ -19,7 +29,7 @@ Main commands:
 
 - `/show_data`: print all the saved records not yet appended to the spreadsheet
 - `/clear_data`: erase the saved records
-- `/append_data`: immediately append saved records to the spreadsheet
+- `/append_data`: immediately append saved records to the spreadsheet. It will also remove all the records saved in the bot's local storage
 - `/auth_data`: show the status of the authentication and the configured spreadsheet
 - `/reset`: reset the spreadsheet, i.e., change ID and the sheet name where to append data
 
