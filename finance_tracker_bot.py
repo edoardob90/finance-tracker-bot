@@ -109,7 +109,7 @@ def main() -> None:
     
     # Create an Updater with the bot's token
     TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-    persistence = PicklePersistence(filename='finance_tracker',
+    persistence = PicklePersistence(filename=os.path.join(DATA_DIR, 'finance_tracker'),
                                     single_file=False,
                                     store_chat_data=False,
                                     store_bot_data=False)
