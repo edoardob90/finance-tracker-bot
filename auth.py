@@ -4,7 +4,7 @@ They handle Google authorization flow and Google sheet setup.
 """
 import pathlib
 import logging
-from functools import partial
+from os.path import join
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -83,7 +83,7 @@ def oauth(
                 creds=flow.credentials
 
                 # Write the token to a file for the next run
-                with (pathlib.Path.cwd() / token_file).open('w') as token:
+                with pathlib.Path(token_file).open('w') as token:
                     token.write(creds.to_json())
 
                 if update:
@@ -131,7 +131,7 @@ def start(update: Update, context: CallbackContext) -> int:
 
         # Each user must have a unique token file
         user_id = update.message.from_user.id
-        TOKEN = "auth_{}.json".format(user_id)
+        TOKEN = join(DATA_DIR, f"auth_{user_id}.json")
         auth_data['token_file'] = TOKEN
     
         # Start the OAuth2 process

@@ -2,7 +2,7 @@
 Constants
 """
 import os
-from os.path import join, dirname
+from os.path import join, dirname, exists
 import logging
 
 # Logging
@@ -17,6 +17,11 @@ CHOOSING, CHOICE, REPLY = range(3)
 
 # Path to Google API client secret file
 CREDS = os.environ.get("CREDS_FILE", join(dirname(__file__), "credentials.json"))
+DATA_DIR = os.environ.get("DATA_DIR", join(dirname(__file__), "storage"))
+
+# Create DATA_DIR if it doesn't exist
+if not exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
 
 # Currencies supported
 CURRENCIES = dict((
