@@ -136,6 +136,9 @@ def main() -> None:
                                     single_file=False,
                                     store_chat_data=False,
                                     store_bot_data=False)
+    if not TOKEN:
+        raise RuntimeError('Telegram bot token is required!')
+
     updater = Updater(TOKEN, persistence=persistence)
     
     # Get a dispatcher to register handlers
@@ -228,8 +231,16 @@ def main() -> None:
     dispatcher.add_error_handler(error_handler)
 
     # Run the bot
-    # TODO: it might be better to switch from polling to webhook mechanism, but requires additional setup
-    updater.start_polling()
+    if MODE == "webhook" and WEBHOOK_URL:
+        updater.start_webhook(
+            listen=LISTEN_URL,
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        )
+    else:
+        updater.start_polling(poll_interval=1.0)
+    
     updater.idle()
 
 if __name__ == "__main__":
