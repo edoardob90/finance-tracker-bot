@@ -16,10 +16,6 @@ from telegram import (
 from telegram.ext import (
     Updater,
     CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    Filters,
-    ConversationHandler,
     CallbackContext,
     PicklePersistence,
 )
@@ -73,17 +69,14 @@ def error_handler(update: Update, context: CallbackContext) -> int:
 def start(update: Update, context: CallbackContext) -> None:
     """Start the bot"""
     user_name = update.message.from_user.first_name
-    update.message.reply_text(
+    update.message.reply_markdown_v2(
         f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
 
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
 \- `/summary`: get a summary of your spreadsheet data \(*coming soon*\)
 \- `/auth`: connect to Google Sheets with your Google account
 
-Use the `/help` command to get a more extensive help\.
-""",
-    parse_mode=ParseMode.MARKDOWN_V2
-    )
+Use the `/help` command to get a more extensive help\.""")
     
     # Setup a daily task to append to the spreadsheet all the records added so far
     user_id = update.message.from_user.id
@@ -99,9 +92,9 @@ Use the `/help` command to get a more extensive help\.
 
 def print_help(update: Update, _: CallbackContext) -> None:
     """Print a more detailed help message"""
-    help_msg = """*Main commands:*
+    update.message.reply_markdown_v2("""*Main commands:*
 
-\- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed \(*yet*\) by the user\. You can force the append action with the `/append_data` command \(see below\)
+\- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed by the user \(*yet*\)\. You can manually append your data with the `/append_data` command \(see below\)
 \- `/record`: record a new expense/income
 \- `/auth`: start or check the authorization process to access Google Sheets
 \- `/summary`: obtain a summary from your spreadsheet data \(*not implemented yet*\)
@@ -111,21 +104,9 @@ def print_help(update: Update, _: CallbackContext) -> None:
 
 \- `/show_data`: print all the saved records not yet appended to the spreadsheet
 \- `/clear_data`: erase the saved records
-\- `/append_data`: immediately append all the saved records to the spreadsheet\. It will also remove all the records saved in the bot's local storage
+\- `/append_data`: immediately append all the saved records to the spreadsheet, ignoring the daily task\. It will also remove all the records saved in the bot's local storage
 \- `/auth_data`: show the status of the authentication and the configured spreadsheet
-\- `/reset`: reset the spreadsheet\. You can change the ID and the sheet name where to append your data"""
-
-    update.message.reply_text(help_msg, parse_mode=ParseMode.MARKDOWN_V2)
-
-def cancel(update: Update, _: CallbackContext) -> int:
-    """Cancel the current action"""
-    text = "Action has been cancelled\. Start again with the `/record` or `/summary` commands\. Bye\!"
-    if update.callback_query:
-        update.callback_query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
-    else:
-        update.message.reply_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
-
-    return ConversationHandler.END
+\- `/reset`: reset the spreadsheet\. You can change the ID and the sheet name where to append your data""")
 
 def main() -> None:
     """Create and run the bot with a polling mechanism"""
@@ -150,82 +131,15 @@ def main() -> None:
     dispatcher.add_handler(start_)
     dispatcher.add_handler(help_)
 
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('record', record.start),
-            CommandHandler('summary', summary.start),
-            CommandHandler('show_data', record.show_data),
-            CommandHandler('clear_data', record.clear),
-            CommandHandler('append_data', record.force_add_to_spreadsheet)
-        ],
-        states={
-            CHOOSING: [
-                CallbackQueryHandler(
-                    record.prompt,
-                    pattern='^' + '$|^'.join(map(str, range(4))) + '$'
-                    # [
-                    #   '0': 'Date', '1': 'Amount', '2': 'Reason', '3': 'Account' <-- ROW_1
-                    #   '4': 'Save', '5': 'Cancel' <-- ROW_2
-                    # ]
-                ),
-                CallbackQueryHandler(record.save, pattern='^4$'),
-                CallbackQueryHandler(cancel, pattern='^5$')
-            ],
-            REPLY: [
-                MessageHandler(
-                   Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
-                   record.store
-                )
-            ]
-        },
-        fallbacks=[
-            CommandHandler('cancel', record.cancel),
-            CommandHandler('show_data', record.show_data),
-            CommandHandler('clear_data', record.clear),
-            CommandHandler('append_data', record.force_add_to_spreadsheet),
-            CommandHandler('help', print_help)
-        ],
-        name="main_conversation",
-        persistent=False
-    )
+    # Register the `record` conversation handler
+    dispatcher.add_handler(record.conv_handler)
 
-    # The main conversation handler
-    dispatcher.add_handler(conv_handler)
+    # Register the `auth` conversation handler
+    dispatcher.add_handler(auth.conv_handler)
 
-    # The auth conversation handler
-    auth_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('auth', auth.start),
-            CommandHandler('auth_data', auth.show_data),
-            CommandHandler('reset', auth.reset)
-        ],
-        states={
-            CHOOSING: [
-                CallbackQueryHandler(
-                    auth.prompt,
-                    pattern='^' + '$|^'.join(map(str, range(3))) + '$' # 'Auth code', 'Spreadsheet ID', 'Sheet name' buttons
-                ),
-                CallbackQueryHandler(auth.done, pattern='^3$'), # 'Done' button
-                CallbackQueryHandler(cancel, pattern='^4$') # 'Cancel' button
-            ],
-            REPLY: [
-                MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
-                    auth.store
-                )
-            ]
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel),
-            CommandHandler('reset', auth.reset),
-            CommandHandler('auth_data', auth.show_data),
-            CommandHandler('help', print_help)
-        ],
-        name="auth_conversation",
-        persistent=False
-    )
-
-    dispatcher.add_handler(auth_handler)
+    # Register the `summary` conversation handler
+    # TODO: to be implemented
+    dispatcher.add_handler(CommandHandler('summary', summary.start))
     
     # Error handler
     dispatcher.add_error_handler(error_handler)

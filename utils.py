@@ -4,8 +4,8 @@ Utils module
 from functools import partial
 from typing import List, Tuple, Union, Dict, Any
 from dateutil.parser import parse
-from telegram import InlineKeyboardButton
-from telegram.ext import CallbackContext
+from telegram import InlineKeyboardButton, Update, ParseMode
+from telegram.ext import CallbackContext, ConversationHandler
 from telegram.utils.helpers import escape_markdown
 from constants import *
 
@@ -50,3 +50,13 @@ def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
         user_data[key] = str(value)
     
     return user_data
+
+def cancel(update: Update, command: str) -> int:
+    """Cancel a command"""
+    text = f"Command `/{command}` has been cancelled\. Use `/help` to know about available commands\. Bye\!"
+    if update.callback_query:
+        update.callback_query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        update.message.reply_markdown_v2(text=text)
+
+    return ConversationHandler.END

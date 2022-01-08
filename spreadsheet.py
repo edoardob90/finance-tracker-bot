@@ -1,6 +1,6 @@
-from typing import List, NoReturn
+from typing import List, NoReturn, Any
 
-import gspread
+from gspread import Client, Worksheet
 from gspread.exceptions import APIError
 
 SCOPES = [
@@ -14,12 +14,12 @@ class Spreadsheet():
     """A class for a Google Spreasheet object"""
     def __init__(self, client, spreadsheet_id=None, sheet_name=None):
         # A valid gspread Client
-        self._client: gspread.Client = client
+        self._client: Client = client
         # Properties
         self._spreadsheet_id: str = spreadsheet_id # the spreadsheet ID
         self._sheet_name: str = sheet_name # the sheet name
         self._range: str = None # the table range
-        self._sheet: gspread.spreadsheet.Spreadsheet = None
+        self._sheet: Worksheet = None
         self._records: List = None
 
     # Properties with accessors
@@ -41,7 +41,7 @@ class Spreadsheet():
         self._sheet_name = name
 
     @property
-    def sheet(self) -> gspread.spreadsheet.Spreadsheet:
+    def sheet(self) -> Worksheet:
         try:
             doc = self._client.open_by_key(self.spreadsheet_id)
             sheet = doc.worksheet(self.sheet_name)
@@ -65,6 +65,6 @@ class Spreadsheet():
         self._range = range
 
     # Methods
-    def append_record(self, values: List):
-        return self.sheet.append_row(values, value_input_option="USER_ENTERED", table_range=self.range)
-
+    def append_records(self, values: List[List]) -> Any:
+        """Append one or more records to the spreadhseet"""
+        return self.sheet.append_rows(values, value_input_option="USER_ENTERED", table_range=self.range)

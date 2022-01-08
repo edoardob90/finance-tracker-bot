@@ -17,10 +17,14 @@ from telegram import (
 from telegram.ext import (
     CallbackContext,
     ConversationHandler,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    Filters,
 )
 
 from constants import *
-from utils import inline_kb_row, escape_markdown
+import utils
 import spreadsheet
 
 logging.basicConfig(
@@ -40,18 +44,16 @@ BUTTONS = dict(
 )
 
 auth_inline_kb = [
-    inline_kb_row(ROW_1),
-    inline_kb_row(ROW_2, offset=len(ROW_1))
+    utils.inline_kb_row(ROW_1),
+    utils.inline_kb_row(ROW_2, offset=len(ROW_1))
 ]
 
 def oauth(
     credentials_file,
     token_file=None,
     code=None,
-    **kwargs):
+    update: Update = None):
     """Start the authorization flow and return a valid token or refresh an expired one"""
-    update = kwargs.get('update')
-    context = kwargs.get('context')
     creds = None
 
     if token_file is not None and pathlib.Path(token_file).exists():
@@ -93,9 +95,8 @@ def oauth(
                 # Tell the user to go to the authorization URL to get the authorization code
                 auth_url, _ = flow.authorization_url(prompt='consent')
                 if update:
-                    update.message.reply_text(
-                        text='Please, go to [this URL]({url}) to request the authorization code\.'.format(url=auth_url),
-                        parse_mode=ParseMode.MARKDOWN_V2
+                    update.message.reply_markdown_v2(
+                        text='Please, go to [this URL]({url}) to request the authorization code\.'.format(url=auth_url)
                     )
     
     return creds
@@ -121,8 +122,7 @@ def start(update: Update, context: CallbackContext) -> int:
             raise FileNotFoundError(msg)
         else:
             do_auth = False
-            update.message.reply_text("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. You can change the spreadsheet with `/reset`\. Use `/cancel` to stop any action\.",
-        parse_mode=ParseMode.MARKDOWN_V2)
+            update.message.reply_markdown_v2("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. You can change the spreadsheet with `/reset`\. Use `/cancel` to stop any action\.")
 
         return ConversationHandler.END
     
@@ -139,9 +139,8 @@ def start(update: Update, context: CallbackContext) -> int:
     
         logger.info(f"auth_data: {str(auth_data)}, context.user_data: {str(context.user_data)}")
 
-        update.message.reply_text(
+        update.message.reply_markdown_v2(
             "Requesting authorization to access Google Sheets\. If it's a new login, you need to approve the access by entering an authorization code\.",
-            parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=InlineKeyboardMarkup(auth_inline_kb)
         )
 
@@ -189,9 +188,8 @@ def store(update: Update, context: CallbackContext) -> int:
     if user_data['spreadsheet']['id'] and user_data['spreadsheet']['sheet_name']:
         user_data['spreadsheet']['is_set'] = True
 
-    update.message.reply_text(
+    update.message.reply_markdown_v2(
         f"*{data.capitalize()}* has been set\!",
-        parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=InlineKeyboardMarkup(auth_inline_kb)
     )
     
@@ -222,8 +220,7 @@ def reset(update: Update, context: CallbackContext) -> int:
     user_data = context.user_data.get('auth')
     
     if not user_data['spreadsheet']['is_set']:
-        update.message.reply_text("The spreadsheet has *never* been set\. Complete the authorization step before\.",
-        parse_mode=ParseMode.MARKDOWN_V2)
+        update.message.reply_markdown_v2("The spreadsheet has *never* been set\. Complete the authorization step before\.")
     else:
         keyboard = [
             auth_inline_kb[0][1:],
@@ -243,15 +240,47 @@ def show_data(update: Update, context: CallbackContext) -> int:
     if auth_data:
         auth_data_str = f"""*auth process*: {'✅' if auth_data['auth_is_done'] else '❌'}
 *spreadsheet*:
-    *ID*: {escape_markdown(auth_data['spreadsheet']['id'])}
-    *sheet name*: {escape_markdown(auth_data['spreadsheet']['sheet_name'])}"""
+    *ID*: {utils.escape_markdown(auth_data['spreadsheet']['id'])}
+    *sheet name*: {utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])}"""
         
-        update.message.reply_text(
-            f"Here's your authorization data:\n\n{auth_data_str}",
-            parse_mode=ParseMode.MARKDOWN_V2
-        )
+        update.message.reply_markdown_v2(f"Here's your authorization data:\n\n{auth_data_str}")
     else:
-        update.message.reply_text("Authorization has not been completed\! Use the command `/auth` to do it\.",
-        parse_mode=ParseMode.MARKDOWN_V2)
+        update.message.reply_markdown_v2("Authorization has not been completed\! Use the command `/auth` to do it\.")
 
     return ConversationHandler.END
+
+def cancel(update: Update, _: CallbackContext) -> int:
+    """Cancel the `auth` command"""
+    return utils.cancel(update, command='auth')
+
+# Define the conversation handler for this command
+conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler('auth', start),
+            CommandHandler('auth_data', show_data),
+            CommandHandler('reset', reset)
+        ],
+        states={
+            CHOOSING: [
+                CallbackQueryHandler(
+                    prompt,
+                    pattern='^' + '$|^'.join(map(str, range(3))) + '$' # 'Auth code', 'Spreadsheet ID', 'Sheet name' buttons
+                ),
+                CallbackQueryHandler(done, pattern='^3$'), # 'Done' button
+                CallbackQueryHandler(cancel, pattern='^4$') # 'Cancel' button
+            ],
+            REPLY: [
+                MessageHandler(
+                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
+                    store
+                )
+            ]
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('reset', reset),
+            CommandHandler('auth_data', show_data),
+        ],
+        name="auth_conversation",
+        persistent=False
+    )

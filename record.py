@@ -2,7 +2,7 @@
 Bot functions for the `/record` command
 """
 import logging
-from typing import OrderedDict, Dict, Any, List, Tuple
+from typing import OrderedDict
 from copy import deepcopy
 from datetime import datetime as dt
 from telegram import (
@@ -13,16 +13,15 @@ from telegram import (
 from telegram.ext import (
     ConversationHandler,
     CallbackContext,
+    Filters,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
 )
 import gspread
 
 from constants import *
-from utils import (
-    inline_kb_row,
-    parse_data,
-    data_to_str,
-    remove_job_if_exists
-)
+import utils
 import auth
 import spreadsheet
 
@@ -50,19 +49,18 @@ BUTTONS = dict(
 )
 
 record_inline_kb = [
-    inline_kb_row(ROW_1),
-    inline_kb_row(ROW_2, offset=len(ROW_1))
+    utils.inline_kb_row(ROW_1),
+    utils.inline_kb_row(ROW_2, offset=len(ROW_1))
 ]
 
 def start(update: Update, context: CallbackContext) -> int:
     """Ask the user the details of a new record"""
-    update.message.reply_text(
+    update.message.reply_markdown_v2(
         """Record a new expense/income\. *Remember* the follwing rules on the input data:
 \- `Date` should be written as `dd-mm-yyyy` or `dd mm yyyy` or `dd mm yy`\. Example: `21-12-2021`
 \- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*\. """
 """Example: `-150.0 EUR` means an expense of 150 euros\.
 \- Currencies supported: EUR, CHF, USD\. You can also enter *a single letter*: E \= EUR, C \= CHF, U \= USD\.""",
-        parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=InlineKeyboardMarkup(record_inline_kb)
     )
 
@@ -99,14 +97,13 @@ def store(update: Update, context: CallbackContext) -> int:
     
     data = update.message.text
     category = user_data['choice']
-    user_data = parse_data(category, data, user_data)
+    user_data = utils.parse_data(category, data, user_data)
     del user_data['choice']
 
-    update.message.reply_text(
+    update.message.reply_markdown_v2(
         f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n"
-        f"{data_to_str(user_data)}",
-        reply_markup=InlineKeyboardMarkup(record_inline_kb),
-        parse_mode=ParseMode.MARKDOWN_V2
+        f"{utils.data_to_str(user_data)}",
+        reply_markup=InlineKeyboardMarkup(record_inline_kb)
     )
     
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
@@ -133,14 +130,14 @@ def save(update: Update, context: CallbackContext) -> int:
 
     query.answer()
     query.edit_message_text(
-        text=f"This is the record just saved:\n\n{data_to_str(record)}\n\n"
+        text=f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
               "You can add a new record with the command `/record`\. 👋",
         parse_mode=ParseMode.MARKDOWN_V2
     )
     
     # Reset the current record to an empty record
+    # TODO: this will erase *EVERYTHING* from the dictionary, keys included. Maybe retain the keys?
     record.clear()
-    # context.user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
     
     logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
@@ -153,11 +150,10 @@ def show_data(update: Update, context: CallbackContext) -> int:
     logger.info(f"context.user_data: {context.user_data}")
     
     if records:
-        records_to_str = '\n\=\=\=\n'.join(map(data_to_str, records))
+        records_to_str = '\n\=\=\=\n'.join(map(utils.data_to_str, records))
         logger.info("Records:\n{}".format(records))
-        update.message.reply_text(
-            text=f"These are the records added so far:\n\n{records_to_str}\n\nThese have *not yet* been added to the spreadsheet\.",
-            parse_mode=ParseMode.MARKDOWN_V2
+        update.message.reply_markdown_v2(
+            text=f"These are the records added so far:\n\n{records_to_str}\n\nThese have *not yet* been added to the spreadsheet\."
         )
     else:
         update.message.reply_text("You have not added any records yet!")
@@ -188,9 +184,8 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
                     spreadsheet_id=auth_data['spreadsheet']['id'],
                     sheet_name=auth_data['spreadsheet']['sheet_name']) 
             try:
-                for record in records:
-                    values = list(record.values())
-                    ss.append_record(values)
+                values = [list(record.values()) for record in records]
+                ss.append_records(values)
             except:
                     logger.error("Something went wrong while appending the record to the spreadsheet.")
                     context.bot.send_message(user_id, text="Something went wrong while appending the record to the spreadsheet :-(", show_alert=True)
@@ -215,7 +210,7 @@ def force_add_to_spreadsheet(update: Update, context: CallbackContext) -> None:
     """Force the append to the spreadsheet"""
     user_id = update.message.from_user.id
 
-    remove_job_if_exists(str(user_id) + '_force_append_data', context)
+    utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
     context.job_queue.run_once(
         add_to_spreadsheet,
         when=1,
@@ -236,12 +231,41 @@ def clear(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
-    """Cancel the current `/record` action"""
+    """Cancel the `record` command"""
     user_data = context.user_data.get('record')
-    query = update.callback_query
-    text = "Action has been cancelled\. Start again with the `/record` or `/summary` commands\. Bye\!"
-    query.answer()
-    query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
     user_data.clear()
+    return utils.cancel(update, command='record')
 
-    return ConversationHandler.END
+# Define the conversation handler for this command
+conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler('record', start),
+            CommandHandler('show_data', show_data),
+            CommandHandler('clear_data', clear),
+            CommandHandler('append_data', force_add_to_spreadsheet)
+        ],
+        states={
+            CHOOSING: [
+                CallbackQueryHandler(
+                    prompt,
+                    pattern='^' + '$|^'.join(map(str, range(4))) + '$'
+                ),
+                CallbackQueryHandler(save, pattern='^4$'),
+                CallbackQueryHandler(cancel, pattern='^5$')
+            ],
+            REPLY: [
+                MessageHandler(
+                   Filters.text & ~(Filters.command | Filters.regex('^(Save|Cancel)$')),
+                   store
+                )
+            ]
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('show_data', show_data),
+            CommandHandler('clear_data', clear),
+            CommandHandler('append_data', force_add_to_spreadsheet),
+        ],
+        name="record_conversation",
+        persistent=False
+    )
