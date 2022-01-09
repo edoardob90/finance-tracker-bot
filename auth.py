@@ -236,16 +236,16 @@ def reset(update: Update, context: CallbackContext) -> int:
 def show_data(update: Update, context: CallbackContext) -> int:
     """Show auth data stored"""
     auth_data = context.user_data.get('auth')
-
+    auth_status = f"{'✅' if auth_data and auth_data['auth_is_done'] else '❌'}"
     if auth_data:
-        auth_data_str = f"""*auth process*: {'✅' if auth_data['auth_is_done'] else '❌'}
+        auth_data_str = f"""*auth status*: {auth_status}
 *spreadsheet*:
     *ID*: {utils.escape_markdown(auth_data['spreadsheet']['id'])}
     *sheet name*: {utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])}"""
         
         update.message.reply_markdown_v2(f"Here's your authorization data:\n\n{auth_data_str}")
     else:
-        update.message.reply_markdown_v2("Authorization has not been completed\! Use the command `/auth` to do it\.")
+        update.message.reply_markdown_v2(f"Auth status: {auth_status}\nYou should first use the command `/auth` to go through the authorization step\.")
 
     return ConversationHandler.END
 

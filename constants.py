@@ -3,6 +3,9 @@ Constants
 """
 import os
 from os.path import join, dirname, exists
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Logging
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

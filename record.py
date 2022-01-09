@@ -2,6 +2,7 @@
 Bot functions for the `/record` command
 """
 import logging
+import re
 from typing import OrderedDict
 from copy import deepcopy
 from datetime import datetime as dt
@@ -97,7 +98,7 @@ def store(update: Update, context: CallbackContext) -> int:
     
     data = update.message.text
     category = user_data['choice']
-    user_data = utils.parse_data(category, data, user_data)
+    user_data.update(utils.parse_data(category, data))
     del user_data['choice']
 
     update.message.reply_markdown_v2(
@@ -143,6 +144,39 @@ def save(update: Update, context: CallbackContext) -> int:
 
     return ConversationHandler.END
 
+def quick_save(update: Update, context: CallbackContext) -> None:
+    """Quick-save a new record written on a single line. Fields must be comma-separated"""
+    match = re.match(r'^!\s*(.*)', update.message.text)
+    
+    if not match:
+        update.message.reply_markdown_v2("Invalid record format\! Remember: it *must* start with a `!` and each field must be separated by a comma\. Example: `!10-3-2022, Cena in pizzeria, -100 EUR, BPM`\.")
+        return None 
+    
+    KEYS = ('date', 'reason', 'amount', 'account')
+    record = OrderedDict(zip(
+            KEYS,
+            [x.strip() for x in match.group(1).split(',')]
+        ))
+    for key in KEYS:
+        record.update(utils.parse_data(key, record[key]))
+
+    record['recorded_on'] = dt.now().strftime("%d-%m-%Y, %H:%M")
+    
+    logger.info(f"User {update.message.from_user.id} added a quick record: {record}")
+
+    # Needed if the user never ran the `/record` command
+    if 'records' not in context.user_data:
+        context.user_data['records'] = []    
+    
+    context.user_data['records'].append(record)
+
+    logger.info(f"records: {context.user_data['records']}, record: {record}")
+
+    update.message.reply_markdown_v2(
+        f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
+        "You can add a new record with the command `/record`\. 👋"
+        )
+
 def show_data(update: Update, context: CallbackContext) -> int:
     """Show the records saved so far"""
     records = context.user_data.get('records')
@@ -169,7 +203,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
 
     if not records:
         logger.info(f"Skipping scheduled task for user_id {user_id}: no records to append.")
-        context.bot.send_message(user_id, "Skipping append task: no records to append.", disable_notification=True)
+        context.bot.send_message(user_id, "There are no records to append.", disable_notification=True)
     else:
         # Get the auth_data
         auth_data = user_data.get('auth')
@@ -193,8 +227,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
             else:
                 context.bot.send_message(
                     user_id,
-                    text="On {}, *{}* records have been successfully added to the spreadsheet\."
-                        .format(dt.now().strftime("%d/%m/%Y, %H:%M"), len(records)),
+                    text=f"On {dt.now().strftime('%d/%m/%Y, %H:%M')}, *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
                     parse_mode=ParseMode.MARKDOWN_V2,
                     disable_notification=True
                 )
@@ -210,13 +243,15 @@ def force_add_to_spreadsheet(update: Update, context: CallbackContext) -> None:
     """Force the append to the spreadsheet"""
     user_id = update.message.from_user.id
 
-    utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
-    context.job_queue.run_once(
-        add_to_spreadsheet,
-        when=1,
-        context=(user_id, context.user_data),
-        name=str(user_id) + '_force_append_data',
-    )
+    if not context.user_data['records']:
+        update.message.reply_text("There are no records to append.")
+    else:
+        utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
+        context.job_queue.run_once(
+            add_to_spreadsheet,
+            when=1,
+            context=(user_id, context.user_data),
+            name=str(user_id) + '_force_append_data')
 
     return None
 
@@ -225,7 +260,7 @@ def clear(update: Update, context: CallbackContext) -> int:
     records = context.user_data.get('records')
     
     if records:
-        update.message.reply_text(f"{len(records)} records have been cleared.")
+        update.message.reply_text(f"{len(records)} record{' has' if len(records) == 1 else 's have'} been cleared.")
         records.clear()
 
     return ConversationHandler.END
@@ -236,7 +271,8 @@ def cancel(update: Update, context: CallbackContext) -> int:
     user_data.clear()
     return utils.cancel(update, command='record')
 
-# Define the conversation handler for this command
+# `record` handlers
+# Conversation handler
 conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('record', start),
@@ -269,3 +305,6 @@ conv_handler = ConversationHandler(
         name="record_conversation",
         persistent=False
     )
+
+# An additional handler for the quick-save command
+quick_save_handler = MessageHandler(Filters.regex(r'^!'), quick_save)

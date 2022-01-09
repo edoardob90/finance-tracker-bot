@@ -31,10 +31,10 @@ def data_to_str(data: Dict[str, Any]) -> str:
     
     return "\n".join(facts)
 
-def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
+def parse_data(key: str, value: str) -> Dict:
     """Helper function to correctly parse a detail of a new record"""
     if key == 'date':
-        user_data['date'] = parse(value, dayfirst=True).strftime("%d/%m/%Y")
+        data = parse(value, dayfirst=True).strftime("%d/%m/%Y")
     elif key == 'amount':
         try:
             amount, cur = value.split()
@@ -44,12 +44,12 @@ def parse_data(key: str, value: str, user_data: Dict[str, Any]) -> Dict:
             cur = 'X'
         else:
             cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'X'
-        user_data[key] = float(amount)
-        user_data['currency'] = cur
+        data = float(amount)
+        return {key: data, 'currency': cur}
     else:
-        user_data[key] = str(value)
+        data = str(value)
     
-    return user_data
+    return {key: data}
 
 def cancel(update: Update, command: str) -> int:
     """Cancel a command"""

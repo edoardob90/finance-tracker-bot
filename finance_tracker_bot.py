@@ -6,7 +6,6 @@ import traceback
 import html
 import json
 import logging
-from dotenv import load_dotenv
 from datetime import time
 from dateutil.parser import ParserError
 from telegram import (
@@ -25,9 +24,6 @@ from utils import remove_job_if_exists
 import record
 import auth
 import summary
-
-# Load .env file
-load_dotenv()
 
 # Logging
 logging.basicConfig(
@@ -73,7 +69,7 @@ def start(update: Update, context: CallbackContext) -> None:
         f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
 
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
-\- `/summary`: get a summary of your spreadsheet data \(*coming soon*\)
+\- `/summary`: get a summary of your spreadsheet data
 \- `/auth`: connect to Google Sheets with your Google account
 
 Use the `/help` command to get a more extensive help\.""")
@@ -95,17 +91,30 @@ def print_help(update: Update, _: CallbackContext) -> None:
     update.message.reply_markdown_v2("""*Main commands:*
 
 \- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed by the user \(*yet*\)\. You can manually append your data with the `/append_data` command \(see below\)
-\- `/record`: record a new expense/income
+
+\- `/record`: record a new expense/income\. You can also quickly add a new record if you send me a message with the following format:
+
+```
+!<date>, <reason>, <amount>, <account>
+```
+The line *must* start with `!` and you *must* use commas \(`,`\) only to separate fields\.
+
 \- `/auth`: start or check the authorization process to access Google Sheets
-\- `/summary`: obtain a summary from your spreadsheet data \(*not implemented yet*\)
+
+\- `/summary`: obtain a summary from your spreadsheet data
+
 \- `/help`: print this message
 
 *Other commands:*
 
 \- `/show_data`: print all the saved records not yet appended to the spreadsheet
+
 \- `/clear_data`: erase the saved records
+
 \- `/append_data`: immediately append all the saved records to the spreadsheet, ignoring the daily task\. It will also remove all the records saved in the bot's local storage
+
 \- `/auth_data`: show the status of the authentication and the configured spreadsheet
+
 \- `/reset`: reset the spreadsheet\. You can change the ID and the sheet name where to append your data""")
 
 def main() -> None:
@@ -133,6 +142,7 @@ def main() -> None:
 
     # Register the `record` conversation handler
     dispatcher.add_handler(record.conv_handler)
+    dispatcher.add_handler(record.quick_save_handler)
 
     # Register the `auth` conversation handler
     dispatcher.add_handler(auth.conv_handler)

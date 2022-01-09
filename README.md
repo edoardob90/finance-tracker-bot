@@ -13,14 +13,19 @@ Using Google Sheets API requires the authentication via OAuth2 and the user cons
 
 The first prerequisite is to have an account on Google Cloud Platform and an active project (create a new one if necessary).
 
-...
+*[TODO]*
 
 ## Usage
 
 Main commands:
 
 - `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet. The task runs every day at 22:59 (UTC) and cannot be customized by the user (at the moment). The user can force the append action with the `/append_data` command (see below)
-- `/record`: record a new expense/income
+- `/record`: record a new expense/income. You can also quickly add a new record by sending a message with the following format:
+```
+!<date>, <reason>, <amount>, <account>
+```
+The line *must* start with `!` and you *must* use commas `,` only to separate fields.
+
 - `/auth`: start or check the authorization process to access Google Sheets
 - `/summary`: obtain a summary from your spreadsheet data (*not implemented yet*)
 - `/help`: print a usage message
