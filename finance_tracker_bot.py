@@ -90,7 +90,23 @@ Use the `/help` command to get a more extensive help\.""")
     logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
 
 def print_help(update: Update, _: CallbackContext) -> None:
-    """Print a more detailed help message"""
+    """
+    Print a more detailed help message
+    
+    Bot commands:
+
+    /start - Start the bot
+    /help - Print the help message
+    /record - Add a new expense/income
+    /query - Query your spreadsheet
+    /show_data - Show the saved records
+    /append_data - Add the records to the spreadsheet
+    /clear_data - Erase the saved records
+    /auth - Start the authentication process
+    /auth_data - Show the status of the authentication
+    /reset - Change the spreadsheet ID and/or name
+    /cancel - Cancel the current command
+    """
     update.message.reply_markdown_v2("""*Main commands:*
 
 \- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed by the user \(*yet*\)\. You can manually append your data with the `/append_data` command \(see below\)

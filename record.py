@@ -6,7 +6,8 @@ import re
 from typing import OrderedDict
 from copy import deepcopy
 import datetime as dtm
-from pyasn1_modules.rfc2459 import ORAddress
+from random import randrange
+
 from telegram import (
     Update,
     InlineKeyboardMarkup,
@@ -58,10 +59,11 @@ def start(update: Update, context: CallbackContext) -> int:
     """Ask the user the details of a new record"""
     update.message.reply_markdown_v2(
         """Record a new expense/income\. *Remember* the follwing rules on the input data:
+
 \- `Date` should be written as `dd-mm-yyyy` or `dd mm yyyy` or `dd mm yy`\. Example: `21-12-2021`
-\- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*\. """
-"""Example: `-150.0 EUR` means an expense of 150 euros\.
-\- Currencies supported: EUR, CHF, USD\. You can also enter *a single letter*: E \= EUR, C \= CHF, U \= USD\.""",
+
+\- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*\. Example: `-150.0 EUR` means an expense of 150 euros\.\n\n"""
+f"""\- Currencies supported: '{', '.join(set(CURRENCIES.values()))}'\. You can also enter *a single letter* or the symbol: E or € → EUR, U or $ → USD\.""",
         reply_markup=InlineKeyboardMarkup(record_inline_kb)
     )
 
@@ -121,18 +123,21 @@ def save(update: Update, context: CallbackContext) -> int:
     if 'choice' in record:
         del record['choice']
 
-    logger.info(f"record: {record}, records: {records}")
+    query.answer()
+
+    # Warn the user when trying to save an empty record
+    if not record:
+        query.edit_message_text("The new record is empty, I don't know what to save 🤔\. Try again or cancel\.", reply_markup=InlineKeyboardMarkup(record_inline_kb))
+        return CHOOSING
 
     # Append the current record
     record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-    # Using deepcopy() because record is a mutable object!
+    
+    # Using deepcopy() because record is a dictionary (i.e., mutable object)
     records.append(deepcopy(record))
 
-    query.answer()
-    query.edit_message_text(
-        text=f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
-              "You can add a new record with the command `/record`\. 👋",
-    )
+    query.edit_message_text(f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
+                            "You can add a new record with the command `/record`\. 👋")
     
     # Reset the current record to an empty record
     # TODO: this will erase *EVERYTHING* from the dictionary, keys included. Maybe retain the keys?
@@ -250,7 +255,7 @@ def append_data(update: Update, context: CallbackContext) -> int:
             utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
             context.job_queue.run_once(
                 add_to_spreadsheet,
-                when=dtm.datetime.now() + dtm.timedelta(seconds=1),
+                when=dtm.datetime.now() + dtm.timedelta(seconds=0.1),
                 context=(user_id, context.user_data),
                 name=str(user_id) + '_force_append_data')
             
@@ -260,7 +265,7 @@ def append_data(update: Update, context: CallbackContext) -> int:
         utils.remove_job_if_exists(str(user_id) + '_append_data', context)
         context.job_queue.run_daily(
             add_to_spreadsheet,
-            time=dtm.time(23, 59, 59),
+            time=dtm.time(23, 59, randrange(0, 60)),
             context=(user_id, context.user_data),
             name=str(user_id) + '_append_data'
         )
@@ -275,7 +280,6 @@ def clear(update: Update, context: CallbackContext) -> int:
     
     if records:
         records.clear()
-        utils.remove_job_if_exists(str(update.message.from_user.id) + '_append_data', context)
         update.message.reply_text(f"{len(records)} record{' has' if len(records) == 1 else 's have'} been cleared\.")
     else:
         update.message.reply_text("There are no data to clear\.")

@@ -18,15 +18,17 @@ log_level = os.environ.get("LOG_LEVEL", "INFO")
 CHOOSING, CHOICE, REPLY = range(3)
 
 # Currencies supported
-CURRENCIES = dict((
-    ('E', 'EUR'),
-    ('€', 'EUR'),
-    ('U', 'USD'),
-    ('$', 'USD'),
-    ('C', 'CHF'),
-    ('G', 'GPB')
-    ('£', 'GPB')
-))
+CURRENCIES = dict(
+    (
+        ('E', 'EUR'),
+        ('€', 'EUR'),
+        ('U', 'USD'),
+        ('$', 'USD'),
+        ('C', 'CHF'),
+        ('G', 'GPB'),
+        ('£', 'GPB'),
+    )
+)
 
 # Path to Google API client secret file
 CREDS = os.environ.get("CREDS_FILE", join(dirname(__file__), "credentials.json"))
