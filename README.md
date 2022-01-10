@@ -24,7 +24,7 @@ Main commands:
 ```
 !<date>, <reason>, <amount>, <account>
 ```
-The line *must* start with `!` and you *must* use commas `,` only to separate fields.
+The line *must* start with `!` and you *must* use commas `,` only to separate fields. The `amount` field may include the currency, as supported by the `/record` command.
 
 - `/auth`: start or check the authorization process to access Google Sheets
 - `/summary`: obtain a summary from your spreadsheet data (*not implemented yet*)
@@ -34,9 +34,9 @@ The line *must* start with `!` and you *must* use commas `,` only to separate fi
 
 - `/show_data`: print all the saved records not yet appended to the spreadsheet
 - `/clear_data`: erase the saved records
-- `/append_data`: immediately append saved records to the spreadsheet. It will also remove all the records saved in the bot's local storage
+- `/append_data <when>`: append the saved records to the spreadsheet. If `when = now`, it will *immediately* append the data to the spreadsheet (if configure), otherwise it schedules a new task to append the data at the next midnight. It will also remove all the records saved in the bot's local storage
 - `/auth_data`: show the status of the authentication and the configured spreadsheet
-- `/reset`: reset the spreadsheet, i.e., change ID and the sheet name where to append data
+- `/reset`: reset the spreadsheet, i.e., change ID and the sheet name where to append the data
 
 ## Notes & to-do
 

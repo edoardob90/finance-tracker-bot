@@ -5,10 +5,10 @@ import logging
 import re
 from typing import OrderedDict
 from copy import deepcopy
-from datetime import datetime as dt
+import datetime as dtm
+from pyasn1_modules.rfc2459 import ORAddress
 from telegram import (
     Update,
-    ParseMode,
     InlineKeyboardMarkup,
 )
 from telegram.ext import (
@@ -88,7 +88,6 @@ def prompt(update: Update, context: CallbackContext) -> int:
     query.answer()
     query.edit_message_text(
         f"Enter the *{BUTTONS[data]}* of the new record",
-        parse_mode=ParseMode.MARKDOWN_V2
     )
     return REPLY
 
@@ -125,7 +124,7 @@ def save(update: Update, context: CallbackContext) -> int:
     logger.info(f"record: {record}, records: {records}")
 
     # Append the current record
-    record['recorded_on'] = dt.now().strftime("%d-%m-%Y, %H:%M")
+    record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
     # Using deepcopy() because record is a mutable object!
     records.append(deepcopy(record))
 
@@ -133,7 +132,6 @@ def save(update: Update, context: CallbackContext) -> int:
     query.edit_message_text(
         text=f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
               "You can add a new record with the command `/record`\. 👋",
-        parse_mode=ParseMode.MARKDOWN_V2
     )
     
     # Reset the current record to an empty record
@@ -147,20 +145,20 @@ def save(update: Update, context: CallbackContext) -> int:
 def quick_save(update: Update, context: CallbackContext) -> None:
     """Quick-save a new record written on a single line. Fields must be comma-separated"""
     match = re.match(r'^!\s*(.*)', update.message.text)
+    record_data = [x.strip() for x in match.group(1).split(',')]
     
     if not match:
         update.message.reply_markdown_v2("Invalid record format\! Remember: it *must* start with a `!` and each field must be separated by a comma\. Example: `!10-3-2022, Cena in pizzeria, -100 EUR, BPM`\.")
         return None 
     
-    KEYS = ('date', 'reason', 'amount', 'account')
-    record = OrderedDict(zip(
-            KEYS,
-            [x.strip() for x in match.group(1).split(',')]
-        ))
-    for key in KEYS:
-        record.update(utils.parse_data(key, record[key]))
-
-    record['recorded_on'] = dt.now().strftime("%d-%m-%Y, %H:%M")
+    # Fill in the new record with the input data
+    record = OrderedDict.fromkeys(RECORD_KEYS)
+    for key, val in zip(('date', 'reason', 'amount', 'account'), record_data):
+        record.update(utils.parse_data(key, val))
+    
+    logger.info(f"record_data: {record_data}, record: {record}")
+    
+    record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
     
     logger.info(f"User {update.message.from_user.id} added a quick record: {record}")
 
@@ -184,13 +182,16 @@ def show_data(update: Update, context: CallbackContext) -> int:
     logger.info(f"context.user_data: {context.user_data}")
     
     if records:
+        # Check if there's a scheduled job to append data
+        jobs = context.job_queue.get_jobs_by_name(str(update.message.from_user.id) + '_append_data')
+        next_time = f"{jobs[0].next_t.strftime('%d/%m/%Y, %H:%M')}" if (jobs and jobs[0] is not None) else 'never'
         records_to_str = '\n\=\=\=\n'.join(map(utils.data_to_str, records))
         logger.info("Records:\n{}".format(records))
         update.message.reply_markdown_v2(
-            text=f"These are the records added so far:\n\n{records_to_str}\n\nThese have *not yet* been added to the spreadsheet\."
+            text=f"These are the records added so far:\n\n{records_to_str}\n\nThese will be added to the spreadsheet on: *{next_time}*\."
         )
     else:
-        update.message.reply_text("You have not added any records yet!")
+        update.message.reply_text("You have not added any records yet\!")
 
     return ConversationHandler.END
 
@@ -203,7 +204,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
 
     if not records:
         logger.info(f"Skipping scheduled task for user_id {user_id}: no records to append.")
-        context.bot.send_message(user_id, "There are no records to append.", disable_notification=True)
+        context.bot.send_message(user_id, "There are no records to append\.", disable_notification=True)
     else:
         # Get the auth_data
         auth_data = user_data.get('auth')
@@ -221,47 +222,63 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
                 values = [list(record.values()) for record in records]
                 ss.append_records(values)
             except:
-                    logger.error("Something went wrong while appending the record to the spreadsheet.")
-                    context.bot.send_message(user_id, text="Something went wrong while appending the record to the spreadsheet :-(", show_alert=True)
+                    logger.error("Something went wrong while appending the record to the spreadsheet")
+                    context.bot.send_message(user_id, text="Something went wrong while appending the record to the spreadsheet\.")
                     raise
             else:
                 context.bot.send_message(
                     user_id,
-                    text=f"On {dt.now().strftime('%d/%m/%Y, %H:%M')}, *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
-                    parse_mode=ParseMode.MARKDOWN_V2,
+                    text=f"On {dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}, *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
                     disable_notification=True
                 )
                 records.clear()
         else:
             context.bot.send_message(user_id, text="Cannot add records to the spreadsheet because the authorization was incomplete or you did not set the spreadsheet ID and/or name\. "
-            "Use the command `/auth` complete the authentication or `/reset` to set the spreadsheet ID and/or name\.",
-            parse_mode=ParseMode.MARKDOWN_V2)
+            "Use the command `/auth` complete the authentication or `/reset` to set the spreadsheet ID and/or name\.")
 
     return None
 
-def force_add_to_spreadsheet(update: Update, context: CallbackContext) -> None:
-    """Force the append to the spreadsheet"""
+def append_data(update: Update, context: CallbackContext) -> int:
+    """Force/schedule the append to the spreadsheet"""
     user_id = update.message.from_user.id
 
     if not context.user_data['records']:
-        update.message.reply_text("There are no records to append.")
+        update.message.reply_text("There are no records to append\.")
     else:
-        utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
-        context.job_queue.run_once(
+        if context.args and context.args[0] == 'now':
+            # Append immediately (within ~1 second)
+            utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
+            context.job_queue.run_once(
+                add_to_spreadsheet,
+                when=dtm.datetime.now() + dtm.timedelta(seconds=1),
+                context=(user_id, context.user_data),
+                name=str(user_id) + '_force_append_data')
+            
+            return ConversationHandler.END
+        
+        # Schedule the append at midnight
+        utils.remove_job_if_exists(str(user_id) + '_append_data', context)
+        context.job_queue.run_daily(
             add_to_spreadsheet,
-            when=1,
+            time=dtm.time(23, 59, 59),
             context=(user_id, context.user_data),
-            name=str(user_id) + '_force_append_data')
+            name=str(user_id) + '_append_data'
+        )
 
-    return None
+        update.message.reply_markdown_v2(f"Your data will be added to the spreadsheet on {dtm.datetime.today().strftime('%d/%m/%Y')} at 23:59\.")
+
+    return ConversationHandler.END
 
 def clear(update: Update, context: CallbackContext) -> int:
     """Manually clear the records"""
     records = context.user_data.get('records')
     
     if records:
-        update.message.reply_text(f"{len(records)} record{' has' if len(records) == 1 else 's have'} been cleared.")
         records.clear()
+        utils.remove_job_if_exists(str(update.message.from_user.id) + '_append_data', context)
+        update.message.reply_text(f"{len(records)} record{' has' if len(records) == 1 else 's have'} been cleared\.")
+    else:
+        update.message.reply_text("There are no data to clear\.")
 
     return ConversationHandler.END
 
@@ -278,7 +295,7 @@ conv_handler = ConversationHandler(
             CommandHandler('record', start),
             CommandHandler('show_data', show_data),
             CommandHandler('clear_data', clear),
-            CommandHandler('append_data', force_add_to_spreadsheet)
+            CommandHandler('append_data', append_data)
         ],
         states={
             CHOOSING: [
@@ -300,7 +317,7 @@ conv_handler = ConversationHandler(
             CommandHandler('cancel', cancel),
             CommandHandler('show_data', show_data),
             CommandHandler('clear_data', clear),
-            CommandHandler('append_data', force_add_to_spreadsheet),
+            CommandHandler('append_data', append_data),
         ],
         name="record_conversation",
         persistent=False

@@ -55,7 +55,7 @@ def cancel(update: Update, command: str) -> int:
     """Cancel a command"""
     text = f"Command `/{command}` has been cancelled\. Use `/help` to know about available commands\. Bye\!"
     if update.callback_query:
-        update.callback_query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN_V2)
+        update.callback_query.edit_message_text(text=text)
     else:
         update.message.reply_markdown_v2(text=text)
 

@@ -5,13 +5,13 @@ They handle Google authorization flow and Google sheet setup.
 import pathlib
 import logging
 from os.path import join
+from typing import Any, Union
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google.auth.exceptions import UserAccessTokenError
 from telegram import (
     Update,
-    ParseMode,
     InlineKeyboardMarkup,
 )
 from telegram.ext import (
@@ -49,10 +49,10 @@ auth_inline_kb = [
 ]
 
 def oauth(
-    credentials_file,
-    token_file=None,
-    code=None,
-    update: Update = None):
+    credentials_file: str,
+    token_file: str = None,
+    code: str = None,
+    update: Update = None) -> Union[Credentials, None]:
     """Start the authorization flow and return a valid token or refresh an expired one"""
     creds = None
 
@@ -156,10 +156,7 @@ def prompt(update: Update, context: CallbackContext) -> int:
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     query.answer()
-    query.edit_message_text(
-        f"Enter the value of *{BUTTONS[data]}*",
-        parse_mode=ParseMode.MARKDOWN_V2
-    )
+    query.edit_message_text(f"Enter the value of *{BUTTONS[data]}*")
 
     return REPLY
 
@@ -167,7 +164,7 @@ def store(update: Update, context: CallbackContext) -> int:
     """Store a property of the spreadsheet chosen"""
     user_data = context.user_data.get('auth')
     
-    text = update.message.text
+    text = update.message.text.strip()
     data = user_data['choice']
     del user_data['choice']
 
@@ -181,7 +178,7 @@ def store(update: Update, context: CallbackContext) -> int:
         if creds:
             user_data['auth_is_done'] = True
     elif data == 'spreadsheet id':
-        user_data['spreadsheet']['id'] = text
+        user_data['spreadsheet']['id'] = text.replace('/', '') # remove any forward slash in the ID
     elif data == 'sheet name':
         user_data['spreadsheet']['sheet_name'] = text
 
@@ -204,34 +201,35 @@ def done(update: Update, context: CallbackContext) -> int:
     query.answer()
 
     if user_data['auth_is_done'] and user_data['spreadsheet']['is_set']:
-        query.edit_message_text("Authorization is complete\! Use `/help` to know available commands\.",
-        parse_mode=ParseMode.MARKDOWN_V2)
-        
+        query.edit_message_text("Authorization is complete\! Use `/help` to know available commands\.")
         return ConversationHandler.END
     
     else:
-        query.edit_message_text('Authorization is incomplete! You must provide all the three parameters: "Auth Code", "Spreadsheet ID" and "Sheet Name".',
+        query.edit_message_text('Authorization is incomplete! You must provide all the three parameters: "Auth Code", "Spreadsheet ID" and "Sheet Name"\.',
         reply_markup=InlineKeyboardMarkup(auth_inline_kb))
-        
         return CHOOSING
 
 def reset(update: Update, context: CallbackContext) -> int:
     """Reset the spreadsheet ID and/or sheet name"""
     user_data = context.user_data.get('auth')
-    
-    if not user_data['spreadsheet']['is_set']:
-        update.message.reply_markdown_v2("The spreadsheet has *never* been set\. Complete the authorization step before\.")
-    else:
-        keyboard = [
-            auth_inline_kb[0][1:],
-            auth_inline_kb[1]
-        ]
-        update.message.reply_text(
-            text="You can reset the spreadsheet ID and/or the sheet name",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+    if user_data:
+        if not user_data['spreadsheet']['is_set']:
+            update.message.reply_markdown_v2("The spreadsheet has *never* been set\. You have to omplete the authorization step before\.")
+        else:
+            keyboard = [
+                auth_inline_kb[0][1:],
+                auth_inline_kb[1]
+            ]
+            update.message.reply_text(
+                text="You can reset the spreadsheet ID and/or the sheet name",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
-    return CHOOSING
+            return CHOOSING
+    else:
+        update.message.reply_markdown_v2("The authorization step has never been completed\. You should first use the command `/auth`\.")
+
+    return ConversationHandler.END
 
 def show_data(update: Update, context: CallbackContext) -> int:
     """Show auth data stored"""

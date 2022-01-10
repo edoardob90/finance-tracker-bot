@@ -6,17 +6,20 @@ import traceback
 import html
 import json
 import logging
+import pytz
 from datetime import time
 from dateutil.parser import ParserError
 from telegram import (
     Update,
     ParseMode,
 )
+
 from telegram.ext import (
     Updater,
     CommandHandler,
     CallbackContext,
     PicklePersistence,
+    Defaults,
 )
 
 from constants import *
@@ -79,7 +82,7 @@ Use the `/help` command to get a more extensive help\.""")
     remove_job_if_exists(str(user_id) + '_append_data', context)
     context.job_queue.run_daily(
         record.add_to_spreadsheet,
-        time=time(22, 59), # UTC time
+        time=time(23, 59, 59),
         context=(user_id, context.user_data),
         name=str(user_id) + '_append_data'
     )
@@ -111,7 +114,7 @@ The line *must* start with `!` and you *must* use commas \(`,`\) only to separat
 
 \- `/clear_data`: erase the saved records
 
-\- `/append_data`: immediately append all the saved records to the spreadsheet, ignoring the daily task\. It will also remove all the records saved in the bot's local storage
+\- `/append_data <when>`: append all the saved records to the spreadsheet\. If you say `/append_data now`, it will *immediately* add all your records to the spreadsheet \(if configured\), otherwise it will silently schedule a new task to be run at midnight\. It will also remove all the records saved in the bot's local storage
 
 \- `/auth_data`: show the status of the authentication and the configured spreadsheet
 
@@ -120,16 +123,22 @@ The line *must* start with `!` and you *must* use commas \(`,`\) only to separat
 def main() -> None:
     """Create and run the bot with a polling mechanism"""
     
-    # Create an Updater with the bot's token
+    # Bot's token
     TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not TOKEN:
+        raise RuntimeError('Telegram bot token is required!')
+
+    # Setup the persistence class
     persistence = PicklePersistence(filename=os.path.join(DATA_DIR, 'finance_tracker'),
                                     single_file=False,
                                     store_chat_data=False,
                                     store_bot_data=False)
-    if not TOKEN:
-        raise RuntimeError('Telegram bot token is required!')
 
-    updater = Updater(TOKEN, persistence=persistence)
+    # Bot's defaults
+    defaults = Defaults(parse_mode=ParseMode.MARKDOWN_V2, tzinfo=pytz.timezone('Europe/Rome'))
+
+    # Create an Updater
+    updater = Updater(TOKEN, persistence=persistence, defaults=defaults)
     
     # Get a dispatcher to register handlers
     dispatcher = updater.dispatcher
