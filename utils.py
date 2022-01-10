@@ -1,10 +1,11 @@
 """
 Utils module
 """
+import re
 from functools import partial
 from typing import List, Tuple, Union, Dict, Any
 from dateutil.parser import parse
-from telegram import InlineKeyboardButton, Update, ParseMode
+from telegram import InlineKeyboardButton, Update
 from telegram.ext import CallbackContext, ConversationHandler
 from telegram.utils.helpers import escape_markdown
 from constants import *
@@ -31,21 +32,33 @@ def data_to_str(data: Dict[str, Any]) -> str:
     
     return "\n".join(facts)
 
+def currency_parser(number_str: str) -> Tuple[float, str]:
+    """Parse a number string that contains a currency symbol or name"""
+    # Extract the currency symbol: either the first character or €, $, £
+    cur_str = re.search(r'([A-Za-z€$£])', number_str)
+    cur_symbol = cur_str.group(1) if cur_str else 'X'
+
+    # Remove any non-numeric char
+    number_str = re.sub(r'[^-0-9,.]', '', number_str)
+    # Remove thousand separator: `,` or `.`
+    number_str = re.sub(r'[,.]', '', number_str[:-3]) + number_str[-3:]
+
+    if '.' in number_str[-3:]:
+        num = float(number_str)
+    elif ',' in number_str[-3:]:
+        num = float(number_str.replace(',', '.'))
+    else:
+        num = float(number_str)
+
+    return round(num, 2), CURRENCIES.get(cur_symbol.upper()) or 'X'
+
 def parse_data(key: str, value: str) -> Dict:
     """Helper function to correctly parse a detail of a new record"""
     if key == 'date':
         data = parse(value, dayfirst=True).strftime("%d/%m/%Y")
     elif key == 'amount':
-        try:
-            amount, cur = value.split()
-        except ValueError:
-            # error is raised if no currency is present
-            amount = value
-            cur = 'X'
-        else:
-            cur = CURRENCIES[cur[0]] if cur[0] in CURRENCIES else 'X'
-        data = float(amount)
-        return {key: data, 'currency': cur}
+        amount, cur = currency_parser(value)
+        return {key: amount, 'currency': cur}
     else:
         data = str(value)
     

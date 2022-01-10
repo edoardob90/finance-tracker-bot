@@ -20,8 +20,12 @@ CHOOSING, CHOICE, REPLY = range(3)
 # Currencies supported
 CURRENCIES = dict((
     ('E', 'EUR'),
+    ('€', 'EUR'),
     ('U', 'USD'),
-    ('C', 'CHF')
+    ('$', 'USD'),
+    ('C', 'CHF'),
+    ('G', 'GPB')
+    ('£', 'GPB')
 ))
 
 # Path to Google API client secret file
