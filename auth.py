@@ -288,7 +288,7 @@ def show_data(update: Update, context: CallbackContext) -> int:
     *ID*: {id}
     *Sheet name*: {name}"""
 
-    status = dict.fromkeys(('auth_status', 'ss_status', 'id', 'name'), value='❌')
+    status = dict.fromkeys(('auth_status', 'ss_status', 'id', 'name'), '❌')
     
     if check_auth(auth_data):
         status['auth_status'] = '✅'
@@ -300,7 +300,7 @@ def show_data(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(
         "Here's your authorization data:\n\n"
         f"{auth_data_str.format(**status)}\n\n"
-        "If you see an ❌, *something went wrong*\. You can run the authorization again with `/auth` or reset the spreadsheet with `/reset`\."
+        "If you see an ❌, you *did not* complete the authorization or set the spreadsheet\. You can run the authorization again with `/auth` or reset the spreadsheet with `/reset`\."
     )
 
     return ConversationHandler.END
