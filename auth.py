@@ -2,10 +2,14 @@
 Bot functions for `/auth` command.
 They handle Google authorization flow and Google sheet setup.
 """
+from http.client import CONFLICT
+from os import stat
 import pathlib
 import logging
 from os.path import join
-from typing import Any, Union
+import re
+from typing import Any, Callable, Union, Dict
+from google import auth
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -48,16 +52,24 @@ auth_inline_kb = [
     utils.inline_kb_row(ROW_2, offset=len(ROW_1))
 ]
 
-def oauth(
-    credentials_file: str,
+class AuthError(Exception):
+    """Exception for an authentication error"""
+
+def oauth(credentials_file: str,
     token_file: str = None,
     code: str = None,
-    update: Update = None) -> Union[Credentials, None]:
+    update: Update = None,
+    user_data: Dict = None) -> Credentials | None:
     """Start the authorization flow and return a valid token or refresh an expired one"""
     creds = None
 
-    if token_file is not None and pathlib.Path(token_file).exists():
-        logger.info("Token file exists")
+    # Look up credentials in `user_data` dictionary ...
+    if user_data is not None and 'creds' in user_data:
+        logger.info("Loading credentials from user_data dict")
+        creds = Credentials.from_authorized_user_info(user_data['creds'], spreadsheet.SCOPES)
+    # ... otherwise try to open `token_file`
+    elif token_file is not None and pathlib.Path(token_file).exists():
+        logger.info("Loading credentials from JSON file")
         creds = Credentials.from_authorized_user_file(token_file, spreadsheet.SCOPES)
 
     if not creds or not creds.valid:
@@ -84,12 +96,21 @@ def oauth(
                 # Get the credentials
                 creds=flow.credentials
 
-                # Write the token to a file for the next run
-                with pathlib.Path(token_file).open('w') as token:
-                    token.write(creds.to_json())
+                # Store credentials
+                creds_stored = False
+                # in user_data dict ...
+                if user_data is not None:
+                    creds_stored = True
+                    user_data['creds'] = creds.to_json()
 
-                if update:
-                    update.message.reply_text('Token saved')
+                # ... and to a JSON file `token_file`
+                if token_file is not None:
+                    creds_stored = True
+                    with pathlib.Path(token_file).open('w') as token:
+                        token.write(creds.to_json())
+
+                if update and creds_stored:
+                    update.message.reply_text('Token has been saved')
             else:
                 logger.info("OAuth step: asking the user to authorize the app and enter the authorization code")
                 # Tell the user to go to the authorization URL to get the authorization code
@@ -101,10 +122,35 @@ def oauth(
     
     return creds
 
+def check_auth(auth_data: Dict = None) -> bool:
+    """Check if the auth data for a user are valid"""
+    if auth_data is None:
+        return False
+    
+    if auth_data.get('auth_is_done'):
+        # First, check if credentials have been stored in `user_data` dict
+        if 'creds' in auth_data:
+            return True
+        # Check if a `token_file` has been saved, is a regular file and exists
+        if 'token_file' in auth_data:
+            token_file = pathlib.Path(auth_data['token_file'])
+            if token_file.is_file() and token_file.exists():
+                return True
+    
+    return False
+
+def check_spreadsheet(auth_data: Dict = None) -> bool:
+    """Check if the spreadsheet is set and is valid"""
+    # If auth has never been done, whether a spreadsheet is set is irrelevant
+    if check_auth(auth_data):
+        spreadsheet = auth_data.get('spreadsheet')
+        if spreadsheet and spreadsheet.get('is_set'):
+            return True
+
+    return False
+
 def start(update: Update, context: CallbackContext) -> int:
     """Start the authorization flow for Google Spreadsheet"""
-    do_auth = True
-    
     # Initialize user data
     user_data = context.user_data
     if 'auth' not in user_data:
@@ -113,19 +159,14 @@ def start(update: Update, context: CallbackContext) -> int:
     auth_data = user_data.get('auth')
 
     # Check if the auth step has been already done
-    if auth_data and auth_data.get('auth_is_done'):
-        # Must check if the token file is valid/exists
-        if not pathlib.Path(auth_data['token_file']).exists():
-            update.message.reply_text("Your authorization file is missing, probably it was deleted. You must do the authentication again.")
-            auth_data['auth_is_done'] = False
-            msg = f'Token file of user {update.message.from_user.full_name} ({update.message.from_user.id}) is moved or missing!'
-            raise FileNotFoundError(msg)
-        else:
-            do_auth = False
-            update.message.reply_markdown_v2("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. You can change the spreadsheet with `/reset`\. Use `/cancel` to stop any action\.")
+    if not check_auth(auth_data):
+        do_auth = True
+        update.message.reply_text("Your authorization credentials are missing\. Use the command `/auth` to authorize again\.")
+        raise AuthError(f"Auth data are invalid or missing for user '{update.message.from_user.full_name}' \('{update.message.from_user.id}'\)")
+    else:
+        do_auth = False
+        update.message.reply_text("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. You can change the spreadsheet with `/reset`\. Use `/cancel` to stop any action\.")
 
-        return ConversationHandler.END
-    
     if do_auth: 
         auth_data['auth_is_done'] = False
 
@@ -135,7 +176,11 @@ def start(update: Update, context: CallbackContext) -> int:
         auth_data['token_file'] = TOKEN
     
         # Start the OAuth2 process
-        oauth(update=update, credentials_file=CREDS, token_file=TOKEN)
+        oauth(
+            credentials_file=CREDS,
+            token_file=TOKEN,
+            update=update,
+            user_data=auth_data)
     
         logger.info(f"auth_data: {str(auth_data)}, context.user_data: {str(context.user_data)}")
 
@@ -145,6 +190,8 @@ def start(update: Update, context: CallbackContext) -> int:
         )
 
         return CHOOSING
+
+    return ConversationHandler.END
 
 def prompt(update: Update, context: CallbackContext) -> int:
     """Ask user a property of the spreadsheet to use"""
@@ -169,7 +216,13 @@ def store(update: Update, context: CallbackContext) -> int:
     del user_data['choice']
 
     if  data == 'auth code' and not user_data['auth_is_done']:
-        creds = oauth(update=update, credentials_file=CREDS, token_file=user_data['token_file'], code=text)
+        creds = oauth(
+            update=update,
+            credentials_file=CREDS,
+            token_file=user_data['token_file'],
+            code=text,
+            user_data=user_data)
+        
         user_data['spreadsheet'] = {
             'is_set': False,
             'id': '',
@@ -202,30 +255,25 @@ def done(update: Update, context: CallbackContext) -> int:
 
     if user_data['auth_is_done'] and user_data['spreadsheet']['is_set']:
         query.edit_message_text("Authorization is complete\! Use `/help` to know available commands\.")
-        return ConversationHandler.END
-    
+        return ConversationHandler.END 
     else:
-        query.edit_message_text('Authorization is incomplete! You must provide all the three parameters: "Auth Code", "Spreadsheet ID" and "Sheet Name"\.',
+        query.edit_message_text('Authorization is incomplete\! You must provide all the three parameters: "Auth Code", "Spreadsheet ID" and "Sheet Name"\.',
         reply_markup=InlineKeyboardMarkup(auth_inline_kb))
         return CHOOSING
 
 def reset(update: Update, context: CallbackContext) -> int:
     """Reset the spreadsheet ID and/or sheet name"""
-    user_data = context.user_data.get('auth')
-    if user_data:
-        if not user_data['spreadsheet']['is_set']:
-            update.message.reply_markdown_v2("The spreadsheet has *never* been set\. You have to omplete the authorization step before\.")
-        else:
-            keyboard = [
-                auth_inline_kb[0][1:],
-                auth_inline_kb[1]
-            ]
-            update.message.reply_text(
-                text="You can reset the spreadsheet ID and/or the sheet name",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-            return CHOOSING
+    auth_data = context.user_data.get('auth')
+    if check_spreadsheet(auth_data):
+        keyboard = [
+            auth_inline_kb[0][1:],
+            auth_inline_kb[1]
+        ]
+        update.message.reply_text(
+            text="You can reset the spreadsheet ID and/or the sheet name",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return CHOOSING
     else:
         update.message.reply_markdown_v2("The authorization step has never been completed\. You should first use the command `/auth`\.")
 
@@ -234,16 +282,26 @@ def reset(update: Update, context: CallbackContext) -> int:
 def show_data(update: Update, context: CallbackContext) -> int:
     """Show auth data stored"""
     auth_data = context.user_data.get('auth')
-    auth_status = f"{'✅' if auth_data and auth_data['auth_is_done'] else '❌'}"
-    if auth_data:
-        auth_data_str = f"""*auth status*: {auth_status}
-*spreadsheet*:
-    *ID*: {utils.escape_markdown(auth_data['spreadsheet']['id'])}
-    *sheet name*: {utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])}"""
-        
-        update.message.reply_markdown_v2(f"Here's your authorization data:\n\n{auth_data_str}")
-    else:
-        update.message.reply_markdown_v2(f"Auth status: {auth_status}\nYou should first use the command `/auth` to go through the authorization step\.")
+
+    auth_data_str = """*Auth status*: {auth_status}
+*Spreadsheet*: {ss_status}
+    *ID*: {id}
+    *Sheet name*: {name}"""
+
+    status = dict.fromkeys(('auth_status', 'ss_status', 'id', 'name'), value='❌')
+    
+    if check_auth(auth_data):
+        status['auth_status'] = '✅'
+        if check_spreadsheet(auth_data):
+            status['ss_status'] = '✅'
+            status['id'] = utils.escape_markdown(auth_data['spreadsheet']['id'])
+            status['name'] = utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])
+
+    update.message.reply_text(
+        "Here's your authorization data:\n\n"
+        f"{auth_data_str.format(**status)}\n\n"
+        "If you see an ❌, *something went wrong*\. You can run the authorization again with `/auth` or reset the spreadsheet with `/reset`\."
+    )
 
     return ConversationHandler.END
 

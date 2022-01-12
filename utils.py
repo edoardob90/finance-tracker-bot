@@ -5,14 +5,14 @@ import re
 from functools import partial
 from typing import List, Tuple, Union, Dict, Any
 from dateutil.parser import parse
-from telegram import InlineKeyboardButton, Update
+from telegram import InlineKeyboardButton, Update, ReplyKeyboardRemove
 from telegram.ext import CallbackContext, ConversationHandler
 from telegram.utils.helpers import escape_markdown
 from constants import *
 
 escape_markdown = partial(escape_markdown, version=2)
 
-def inline_kb_row(buttons: Union[Tuple, List], offset: int = 0) -> List:
+def inline_kb_row(buttons: Union[Tuple, List], offset: int = 0) -> List[InlineKeyboardButton]:
     """Build a keyboard row from a list of buttons"""
     _buttons = [{'text': x, 'callback_data': str(y)} for y, x in enumerate(buttons, start=offset)]
     return list(map(lambda x: InlineKeyboardButton(**x), _buttons))
@@ -68,8 +68,9 @@ def cancel(update: Update, command: str) -> int:
     """Cancel a command"""
     text = f"Command `/{command}` has been cancelled\. Use `/help` to know about available commands\. Bye\!"
     if update.callback_query:
+        update.callback_query.answer()
         update.callback_query.edit_message_text(text=text)
     else:
-        update.message.reply_markdown_v2(text=text)
+        update.message.reply_markdown_v2(text=text, reply_markup=ReplyKeyboardRemove())
 
     return ConversationHandler.END
