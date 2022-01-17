@@ -11,12 +11,6 @@ load_dotenv()
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 log_level = os.environ.get("LOG_LEVEL", "INFO")
 
-# The three conversation states:
-# CHOOSING = 0
-# CHOICE = 1
-# REPLY = 2
-CHOOSING, CHOICE, REPLY = range(3)
-
 # Currencies supported
 CURRENCIES = dict(
     (

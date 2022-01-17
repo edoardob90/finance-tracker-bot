@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # pylint: disable=C0116,W0613
-
 import os
 import traceback
 import html
@@ -25,8 +24,8 @@ from telegram.ext import (
 from constants import *
 from utils import remove_job_if_exists
 import record
-import auth
-import summary
+# import auth
+# import summary
 
 # Logging
 logging.basicConfig(
@@ -35,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Helpers functions
-def error_handler(update: Update, context: CallbackContext) -> int:
+def error_handler(update: Update, context: CallbackContext) -> None:
     """Log any error and send a warning message"""
     # FIXME: this MUST NOT BE hard-coded!
     developer_user_id = os.environ.get('DEVELOPER_USER_ID')
@@ -63,10 +62,12 @@ def error_handler(update: Update, context: CallbackContext) -> int:
     if developer_user_id:
         context.bot.send_message(chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML)
 
-    return CHOOSING
+    return None
 
 def start(update: Update, context: CallbackContext) -> None:
     """Start the bot"""
+    context.user_data['start_over'] = False
+    
     user_name = update.message.from_user.first_name
     update.message.reply_markdown_v2(
         f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
@@ -77,17 +78,17 @@ def start(update: Update, context: CallbackContext) -> None:
 
 Use the `/help` command to get a more extensive help\.""")
     
-    # Setup a daily task to append to the spreadsheet all the records added so far
-    user_id = update.message.from_user.id
-    remove_job_if_exists(str(user_id) + '_append_data', context)
-    context.job_queue.run_daily(
-        record.add_to_spreadsheet,
-        time=time(23, 59, 59),
-        context=(user_id, context.user_data),
-        name=str(user_id) + '_append_data'
-    )
+    # # Setup a daily task to append to the spreadsheet all the records added so far
+    # user_id = update.message.from_user.id
+    # remove_job_if_exists(str(user_id) + '_append_data', context)
+    # context.job_queue.run_daily(
+    #     record.add_to_spreadsheet,
+    #     time=time(23, 59, 59),
+    #     context=(user_id, context.user_data),
+    #     name=str(user_id) + '_append_data'
+    # )
     
-    logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
+    # logger.info(f"Created a new daily task 'add_to_spreadsheet' for user {update.effective_user.full_name} ({update.effective_user.id})")
 
 def print_help(update: Update, _: CallbackContext) -> None:
     """
@@ -166,15 +167,15 @@ def main() -> None:
     dispatcher.add_handler(help_)
 
     # Register the `record` conversation handler
-    dispatcher.add_handler(record.conv_handler)
-    dispatcher.add_handler(record.quick_save_handler)
+    dispatcher.add_handler(record.record_handler)
+    # dispatcher.add_handler(record.quick_save_handler)
 
     # Register the `auth` conversation handler
-    dispatcher.add_handler(auth.conv_handler)
+    # dispatcher.add_handler(auth.conv_handler)
 
     # Register the `summary` conversation handler
     # TODO: to be implemented
-    dispatcher.add_handler(CommandHandler('summary', summary.start))
+    # dispatcher.add_handler(CommandHandler('summary', summary.start))
     
     # Error handler
     dispatcher.add_error_handler(error_handler)
