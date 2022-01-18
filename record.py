@@ -66,9 +66,6 @@ RECORD_KEYS = ('date',
     STOP,
 ) = map(chr, range(4, 15))
 
-# Shortcut to conversation end state
-END = ConversationHandler.END
-
 #
 # Inline keyboards
 #
@@ -113,7 +110,7 @@ record_inline_kb = [
 def start(update: Update, context: CallbackContext) -> str:
     """Entry point for the `/record` command"""
     keyboard = InlineKeyboardMarkup(entry_inline_kb)
-    text = "*Record menu*\nWhat do you want to do?"
+    text = "🗳️ *Record menu*\nWhat do you want to do?"
     user_data = context.user_data
     
     if user_data.get('start_over'):
@@ -121,6 +118,7 @@ def start(update: Update, context: CallbackContext) -> str:
         update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
     else:
         update.message.reply_markdown_v2(text=text, reply_markup=keyboard)
+    
     user_data['start_over'] = False
     
     return SELECTING_ACTION
@@ -223,8 +221,8 @@ def save(update: Update, context: CallbackContext) -> str:
 
     return INPUT
 
-def back_to_start(update: Update, context: CallbackContext) -> int:
-    """Go back to the start menu of `/record`"""
+def back_to_start(update: Update, context: CallbackContext) -> str:
+    """Go back to the start menu"""
     update.callback_query.answer()
     context.user_data['start_over'] = True
     return start(update, context)
@@ -302,26 +300,22 @@ def clear_data(update: Update, context: CallbackContext) -> str:
         )
         records.clear()
     else:
-        query.edit_message_text("There are no data to clear\.", reply_markup=keyboard)
+        query.edit_message_text("There are no records to clear\.", reply_markup=keyboard)
 
     return SELECTING_ACTION
 
-def cancel(update: Update, context: CallbackContext) -> int:
+def cancel(update: Update, context: CallbackContext) -> str:
     """Cancel the `record` command"""
     record = context.user_data.get('record')
     if record:
         record.clear()
+    update.callback_query.answer()
     update.callback_query.edit_message_text("Use `/record` to start again or `/help` to know what I can do\.\nBye 👋")
     return STOPPING
 
-def stop(update: Update, context: CallbackContext) -> int:
+def stop(update: Update, _: CallbackContext) -> int:
     """End the conversation altogether"""
-    text = "Use `/record` to add a new record or `/help` to know what I can do\.\nBye 👋"
-    if update.callback_query:
-        update.callback_query.edit_message_text(text=text)
-    else:
-        update.message.reply_text(text=text)
-    return END
+    return utils.stop(command='record', action='add a new record', update=update)
 
 # `record` handlers
 # Second-level conversation handler
@@ -379,7 +373,7 @@ record_handler = ConversationHandler(
 # quick_save_handler = MessageHandler(Filters.regex(r'^!'), quick_save)
 
 
-
+#
 # def add_to_spreadsheet(context: CallbackContext) -> None:
 #     """Daily task for `telegram.ext.JobQueue` to add records to the spreadsheet"""
 #     user_id, user_data = context.job.context
@@ -427,6 +421,7 @@ record_handler = ConversationHandler(
 
 #     return None
 
+#
 # def append_data(update: Update, context: CallbackContext) -> int:
 #     """Force/schedule the append to the spreadsheet"""
 #     user_id = update.message.from_user.id
@@ -457,9 +452,7 @@ record_handler = ConversationHandler(
 
 #     return ConversationHandler.END
 
-
-
-
+#
 ## Create a reply markup with buttons corresponding to the 'Accounts' saved in the 'Categories' sheet of the spreadsheet
 # if user_data['choice'] == 'account':
 #     # Fetch the accounts list the first time

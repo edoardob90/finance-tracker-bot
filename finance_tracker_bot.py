@@ -24,7 +24,7 @@ from telegram.ext import (
 from constants import *
 from utils import remove_job_if_exists
 import record
-# import auth
+import auth
 # import summary
 
 # Logging
@@ -74,7 +74,7 @@ def start(update: Update, context: CallbackContext) -> None:
 
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
 \- `/summary`: get a summary of your spreadsheet data
-\- `/auth`: connect to Google Sheets with your Google account
+\- `/settings`: manage your settings: the connection with Google Sheets, the spreadsheet, and when to append the data
 
 Use the `/help` command to get a more extensive help\.""")
     
@@ -166,14 +166,14 @@ def main() -> None:
     dispatcher.add_handler(start_)
     dispatcher.add_handler(help_)
 
-    # Register the `record` conversation handler
+    # Register the `/record` conversation handler
     dispatcher.add_handler(record.record_handler)
     # dispatcher.add_handler(record.quick_save_handler)
 
-    # Register the `auth` conversation handler
-    # dispatcher.add_handler(auth.conv_handler)
+    # Register the `/settings` conversation handler
+    dispatcher.add_handler(auth.settings_handler)
 
-    # Register the `summary` conversation handler
+    # Register the `/summary` conversation handler
     # TODO: to be implemented
     # dispatcher.add_handler(CommandHandler('summary', summary.start))
     

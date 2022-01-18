@@ -2,21 +2,19 @@
 Bot functions for `/auth` command.
 They handle Google authorization flow and Google sheet setup.
 """
-from http.client import CONFLICT
-from os import stat
 import pathlib
 import logging
-from os.path import join
-import re
-from typing import Any, Callable, Union, Dict
-from google import auth
+import json
+from typing import Union, Dict, Tuple
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google.auth.exceptions import UserAccessTokenError
+from google.auth.exceptions import UserAccessTokenError, RefreshError
+
 from telegram import (
     Update,
     InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from telegram.ext import (
     CallbackContext,
@@ -36,41 +34,87 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# State definitions
+(
+    SELECTING_ACTION,
+    NEW_LOGIN,
+    EDIT_LOGIN,
+    REPLY,
+    STOPPING,
+) = map(chr, range(5))
 
-# Inline Keyboard
-ROW_1 = 'Auth code', 'Spreadsheet ID', 'Sheet name'
-ROW_2 = 'Done', 'Cancel'
-BUTTONS = dict(
-    zip(
-        map(str, range(len(ROW_1 + ROW_2))),
-        ROW_1 + ROW_2
-    )
-)
+# Constants for CallbackQuery data
+(
+    LOGIN,
+    SPREADSHEET,
+    SCHEDULE,
+    SHOW,
+    BACK,
+    CANCEL,
+    SAVE,
+    STOP,
+    RESET,
+    ID,
+    NAME,
+) = map(chr, range(5, 16))
 
-auth_inline_kb = [
-    utils.inline_kb_row(ROW_1),
-    utils.inline_kb_row(ROW_2, offset=len(ROW_1))
+#
+# Inline Keyboards
+#
+# Entry-point keyboard
+# ROW_1 = ('Login', 'Spreadsheet', 'Schedule')
+# ROW_2 = ('Back',)
+entry_inline_kb = [
+    [
+        InlineKeyboardButton(text='👤 Login', callback_data=str(LOGIN)),
+        InlineKeyboardButton(text='📊 Spreadsheet', callback_data=str(SPREADSHEET)),
+        InlineKeyboardButton(text='📆 Schedule', callback_data=str(SCHEDULE)),
+    ],
+    [InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL))]
 ]
+
+# Login keyboard
+edit_login_inline_kb = [
+    [
+       InlineKeyboardButton(text='Reset login', callback_data=str(RESET)),
+       InlineKeyboardButton(text='Login status', callback_data=str(SHOW)) 
+    ],
+    [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
+]
+
+# Spreadsheet keyboard
+spreadsheet_inline_kb = [
+    [ 
+        InlineKeyboardButton(text='ID', callback_data=str(ID)),
+        InlineKeyboardButton(text='Sheet name', callback_data=str(NAME))
+    ],
+    [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
+]
+
+# Utility functions
 
 class AuthError(Exception):
     """Exception for an authentication error"""
 
-def oauth(credentials_file: str,
-    token_file: str = None,
-    code: str = None,
-    update: Update = None,
-    user_data: Dict = None) -> Credentials | None:
+def oauth(credentials_file: str, token_file: str = None, code: str = None, user_data: Dict = None) -> Tuple[Union[Credentials, None], Union[None, str]]:
     """Start the authorization flow and return a valid token or refresh an expired one"""
     creds = None
+    result = None
+
+    logger.info(f'Current auth data: {user_data}')
 
     # Look up credentials in `user_data` dictionary ...
     if user_data is not None and 'creds' in user_data:
         logger.info("Loading credentials from user_data dict")
-        creds = Credentials.from_authorized_user_info(user_data['creds'], spreadsheet.SCOPES)
+        creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), spreadsheet.SCOPES)
+    
     # ... otherwise try to open `token_file`
     elif token_file is not None and pathlib.Path(token_file).exists():
         logger.info("Loading credentials from JSON file")
         creds = Credentials.from_authorized_user_file(token_file, spreadsheet.SCOPES)
+
+    if creds is not None:
+        result = 'Credentials loaded from user data or a valid file\.'
 
     if not creds or not creds.valid:
         logger.info("Creds are invalid")
@@ -78,7 +122,7 @@ def oauth(credentials_file: str,
             logger.info("Creds are expired")
             try:
                 creds.refresh(Request())
-            except UserAccessTokenError:
+            except (UserAccessTokenError, RefreshError):
                 raise
         else:
             logger.info("New login: starting a new OAuth flow")
@@ -94,7 +138,11 @@ def oauth(credentials_file: str,
                 flow.fetch_token(code=code)
                 
                 # Get the credentials
-                creds=flow.credentials
+                try:
+                    creds=flow.credentials
+                except ValueError:
+                    logger.error("No valid token found in session")
+                    raise
 
                 # Store credentials
                 creds_stored = False
@@ -106,21 +154,19 @@ def oauth(credentials_file: str,
                 # ... and to a JSON file `token_file`
                 if token_file is not None:
                     creds_stored = True
+                    user_data['token_file'] = token_file
                     with pathlib.Path(token_file).open('w') as token:
                         token.write(creds.to_json())
 
-                if update and creds_stored:
-                    update.message.reply_text('Token has been saved')
+                if creds_stored:
+                    result = 'Token has been saved\.'
             else:
                 logger.info("OAuth step: asking the user to authorize the app and enter the authorization code")
                 # Tell the user to go to the authorization URL to get the authorization code
                 auth_url, _ = flow.authorization_url(prompt='consent')
-                if update:
-                    update.message.reply_markdown_v2(
-                        text='Please, go to [this URL]({url}) to request the authorization code\.'.format(url=auth_url)
-                    )
+                result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
     
-    return creds
+    return creds, result
 
 def check_auth(auth_data: Dict = None) -> bool:
     """Check if the auth data for a user are valid"""
@@ -149,141 +195,103 @@ def check_spreadsheet(auth_data: Dict = None) -> bool:
 
     return False
 
-def start(update: Update, context: CallbackContext) -> int:
-    """Start the authorization flow for Google Spreadsheet"""
-    # Initialize user data
+# Handler-related functions
+
+def start(update: Update, context: CallbackContext) -> str:
+    """Entry point for the `/settings` command"""
+    keyboard = InlineKeyboardMarkup(entry_inline_kb)
+    text = "⚙️ *Settings menu*\nWhat do you want to do?"
     user_data = context.user_data
+    
+    if user_data.get('start_over'):
+        update.callback_query.answer()
+        update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
+    else:
+        update.message.reply_markdown_v2(text=text, reply_markup=keyboard)
+    
+    user_data['start_over'] = False
+
+    return SELECTING_ACTION
+
+def start_login(update: Update, context: CallbackContext) -> str:
+    """Check user's login data and start a new OAuth flow"""
+    user_data = context.user_data
+    query = update.callback_query
+    query.answer()
+    
+    # Initialize user data
     if 'auth' not in user_data:
         user_data['auth'] = {}
     
     auth_data = user_data.get('auth')
+    
+    # Each user must have a unique token file
+    if 'token_file' not in auth_data:
+        auth_data['token_file'] = f"{DATA_DIR}/auth_{str(query.from_user.id)}.json"
 
     # Check if the auth step has been already done
     if not check_auth(auth_data):
-        do_auth = True
-        update.message.reply_text("Your authorization credentials are missing\. Use the command `/auth` to authorize again\.")
-        raise AuthError(f"Auth data are invalid or missing for user '{update.message.from_user.full_name}' \('{update.message.from_user.id}'\)")
-    else:
-        do_auth = False
-        update.message.reply_text("Authentication has already been completed\. You can add records with the `/record` command or query your data with `/summary`\. You can change the spreadsheet with `/reset`\. Use `/cancel` to stop any action\.")
-
-    if do_auth: 
-        auth_data['auth_is_done'] = False
-
-        # Each user must have a unique token file
-        user_id = update.message.from_user.id
-        TOKEN = join(DATA_DIR, f"auth_{user_id}.json")
-        auth_data['token_file'] = TOKEN
-    
         # Start the OAuth2 process
-        oauth(
+        _, result = oauth(
             credentials_file=CREDS,
-            token_file=TOKEN,
-            update=update,
-            user_data=auth_data)
-    
-        logger.info(f"auth_data: {str(auth_data)}, context.user_data: {str(context.user_data)}")
-
-        update.message.reply_markdown_v2(
-            "Requesting authorization to access Google Sheets\. If it's a new login, you need to approve the access by entering an authorization code\.",
-            reply_markup=InlineKeyboardMarkup(auth_inline_kb)
+            token_file=auth_data['token_file'],
+            user_data=auth_data
         )
+        query.edit_message_text(text=result)
+        return NEW_LOGIN
+    else:
+        query.edit_message_text(
+            "You already logged in\. What do you want to do?",
+            reply_markup=InlineKeyboardMarkup(edit_login_inline_kb)
+        )
+        return EDIT_LOGIN
 
-        return CHOOSING
-
-    return ConversationHandler.END
-
-def prompt(update: Update, context: CallbackContext) -> int:
-    """Ask user a property of the spreadsheet to use"""
-    user_data = context.user_data.get('auth')
-    query = update.callback_query
-    data = query.data
-    user_data['choice'] = BUTTONS[data].lower()
+def store_auth_code(update: Update, context: CallbackContext) -> int:
+    """Handle the authorization code of a new login"""
+    keyboard = InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Back', callback_data=str(END)))
     
-    logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
-
-    query.answer()
-    query.edit_message_text(f"Enter the value of *{BUTTONS[data]}*")
-
-    return REPLY
-
-def store(update: Update, context: CallbackContext) -> int:
-    """Store a property of the spreadsheet chosen"""
-    user_data = context.user_data.get('auth')
-    
-    text = update.message.text.strip()
-    data = user_data['choice']
-    del user_data['choice']
-
-    if  data == 'auth code' and not user_data['auth_is_done']:
-        creds = oauth(
-            update=update,
-            credentials_file=CREDS,
-            token_file=user_data['token_file'],
-            code=text,
-            user_data=user_data)
-        
-        user_data['spreadsheet'] = {
-            'is_set': False,
-            'id': '',
-            'sheet_name': ''
-        }
-        if creds:
-            user_data['auth_is_done'] = True
-    elif data == 'spreadsheet id':
-        user_data['spreadsheet']['id'] = text.replace('/', '') # remove any forward slash in the ID
-    elif data == 'sheet name':
-        user_data['spreadsheet']['sheet_name'] = text
-
-    if user_data['spreadsheet']['id'] and user_data['spreadsheet']['sheet_name']:
-        user_data['spreadsheet']['is_set'] = True
-
-    update.message.reply_markdown_v2(
-        f"*{data.capitalize()}* has been set\!",
-        reply_markup=InlineKeyboardMarkup(auth_inline_kb)
+    auth_data = context.user_data.get('auth')
+    code = update.message.text
+    creds, result = oauth(
+        credentials_file=CREDS,
+        token_file=auth_data['token_file'],
+        user_data=auth_data,
+        code=code
     )
     
-    logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
-
-    return CHOOSING
-
-def done(update: Update, context: CallbackContext) -> int:
-    """Ends the auth conversation"""
-    user_data = context.user_data.get('auth')
-    query = update.callback_query
-    query.answer()
-
-    if user_data['auth_is_done'] and user_data['spreadsheet']['is_set']:
-        query.edit_message_text("Authorization is complete\! Use `/help` to know available commands\.")
-        return ConversationHandler.END 
+    if creds and result:
+        auth_data['auth_is_done'] = True
+        update.message.reply_text(text=result, reply_markup=keyboard)
     else:
-        query.edit_message_text('Authorization is incomplete\! You must provide all the three parameters: "Auth Code", "Spreadsheet ID" and "Sheet Name"\.',
-        reply_markup=InlineKeyboardMarkup(auth_inline_kb))
-        return CHOOSING
+        auth_data['auth_is_done'] = False
+        update.message.reply_text(
+            text='⚠️ I could not save your token\!',
+            reply_markup=keyboard
+        )
 
-def reset(update: Update, context: CallbackContext) -> int:
+    return END
+
+def reset_login(update: Update, context: CallbackContext) -> int:
     """Reset the spreadsheet ID and/or sheet name"""
     auth_data = context.user_data.get('auth')
-    if check_spreadsheet(auth_data):
-        keyboard = [
-            auth_inline_kb[0][1:],
-            auth_inline_kb[1]
-        ]
-        update.message.reply_text(
-            text="You can reset the spreadsheet ID and/or the sheet name",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return CHOOSING
-    else:
-        update.message.reply_markdown_v2("The authorization step has never been completed\. You should first use the command `/auth`\.")
+    # Remove the token file
+    pathlib.Path(auth_data['token_file']).unlink(missing_ok=True)
+    # Clear the dictionary
+    auth_data.clear()
+    
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        "Your login data have been reset\. You can login again from the `/settings` menu\.",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
+    )
+    return END
 
-    return ConversationHandler.END
-
-def show_data(update: Update, context: CallbackContext) -> int:
+def show_login(update: Update, context: CallbackContext) -> int:
     """Show auth data stored"""
     auth_data = context.user_data.get('auth')
 
     auth_data_str = """*Auth status*: {auth_status}
+
 *Spreadsheet*: {ss_status}
     *ID*: {id}
     *Sheet name*: {name}"""
@@ -297,46 +305,73 @@ def show_data(update: Update, context: CallbackContext) -> int:
             status['id'] = utils.escape_markdown(auth_data['spreadsheet']['id'])
             status['name'] = utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])
 
-    update.message.reply_text(
-        "Here's your authorization data:\n\n"
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        "Here's your login data:\n\n"
         f"{auth_data_str.format(**status)}\n\n"
-        "If you see an ❌, you *did not* complete the authorization or set the spreadsheet\. You can run the authorization again with `/auth` or reset the spreadsheet with `/reset`\."
+        "✅ = OK\n❌ = missing data",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
     )
 
-    return ConversationHandler.END
+    return END
 
-def cancel(update: Update, _: CallbackContext) -> int:
-    """Cancel the `auth` command"""
-    return utils.cancel(update, command='auth')
+def cancel(update: Update, _: CallbackContext) -> str:
+    """Cancel the `settings` command"""
+    update.callback_query.answer()
+    update.callback_query.edit_message_text("Use `/settings` to enter the settings again or `/help` to know what I can do for you\.\nBye 👋")
+    return STOPPING
 
-# Define the conversation handler for this command
-conv_handler = ConversationHandler(
+def stop(update: Update, _: CallbackContext) -> int:
+    """End the conversation altogether"""
+    return utils.stop(command='settings', action='enter your settings', update=update)
+
+def back_to_start(update: Update, context: CallbackContext) -> str:
+    """Go back to the start menu"""
+    update.callback_query.answer()
+    context.user_data['start_over'] = True
+    return start(update, context)
+
+# Login conversation handler
+login_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(start_login, pattern=f'^{LOGIN}$')
+    ],
+    states={
+        NEW_LOGIN: [
+            MessageHandler(Filters.text & ~Filters.command, store_auth_code)
+        ],
+        EDIT_LOGIN: [
+            CallbackQueryHandler(reset_login, pattern=f'^{RESET}$'),
+            CallbackQueryHandler(show_login, pattern=f'^{SHOW}$')
+        ],
+    },
+    fallbacks=[
+        CommandHandler('cancel', cancel),
+        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$')
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        STOPPING: END,
+    },
+    name="login_second_level",
+    persistent=False
+)
+
+# Top-level conversation handler
+settings_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('auth', start),
-            CommandHandler('auth_data', show_data),
-            CommandHandler('reset', reset)
+            CommandHandler('settings', start),
         ],
         states={
-            CHOOSING: [
-                CallbackQueryHandler(
-                    prompt,
-                    pattern='^' + '$|^'.join(map(str, range(3))) + '$' # 'Auth code', 'Spreadsheet ID', 'Sheet name' buttons
-                ),
-                CallbackQueryHandler(done, pattern='^3$'), # 'Done' button
-                CallbackQueryHandler(cancel, pattern='^4$') # 'Cancel' button
+            SELECTING_ACTION: [
+                login_handler,
+                CallbackQueryHandler(stop, pattern=f'^{CANCEL}$'),
+                CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
             ],
-            REPLY: [
-                MessageHandler(
-                    Filters.text & ~(Filters.command | Filters.regex('^(Done|Cancel)$')),
-                    store
-                )
-            ]
         },
         fallbacks=[
-            CommandHandler('cancel', cancel),
-            CommandHandler('reset', reset),
-            CommandHandler('auth_data', show_data),
+            CommandHandler('stop', stop),
         ],
-        name="auth_conversation",
+        name="settings_top_level",
         persistent=False
-    )
+)
