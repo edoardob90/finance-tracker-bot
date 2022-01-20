@@ -2,6 +2,8 @@
 Bot functions for `/auth` command.
 They handle Google authorization flow and Google sheet setup.
 """
+from curses import use_default_colors
+from multiprocessing.sharedctypes import Value
 import pathlib
 import logging
 import json
@@ -40,8 +42,9 @@ logger = logging.getLogger(__name__)
     NEW_LOGIN,
     EDIT_LOGIN,
     REPLY,
+    INPUT,
     STOPPING,
-) = map(chr, range(5))
+) = map(chr, range(6))
 
 # Constants for CallbackQuery data
 (
@@ -50,13 +53,14 @@ logger = logging.getLogger(__name__)
     SCHEDULE,
     SHOW,
     BACK,
+    UP_ONE_LEVEL,
     CANCEL,
     SAVE,
     STOP,
     RESET,
     ID,
-    NAME,
-) = map(chr, range(5, 16))
+    SHEET_NAME,
+) = map(chr, range(6, 18))
 
 #
 # Inline Keyboards
@@ -86,10 +90,16 @@ edit_login_inline_kb = [
 spreadsheet_inline_kb = [
     [ 
         InlineKeyboardButton(text='ID', callback_data=str(ID)),
-        InlineKeyboardButton(text='Sheet name', callback_data=str(NAME))
+        InlineKeyboardButton(text='Sheet name', callback_data=str(SHEET_NAME))
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
 ]
+BUTTONS = dict(
+    zip(
+       (ID, SHEET_NAME),
+       ('ID', 'Sheet name')
+    )
+)
 
 # Utility functions
 
@@ -185,18 +195,21 @@ def check_auth(auth_data: Dict = None) -> bool:
     
     return False
 
-def check_spreadsheet(auth_data: Dict = None) -> bool:
+def check_spreadsheet(spreadsheet_data: Dict = None) -> Union[None, Tuple]:
     """Check if the spreadsheet is set and is valid"""
-    # If auth has never been done, whether a spreadsheet is set is irrelevant
-    if check_auth(auth_data):
-        spreadsheet = auth_data.get('spreadsheet')
-        if spreadsheet and spreadsheet.get('is_set'):
-            return True
+    if spreadsheet_data is None:
+        return None
+    
+    spreadsheet_data['is_set'] = False
+    sheet_id, sheet_name = spreadsheet_data.get('id'), spreadsheet_data.get('sheet_name') 
+    if sheet_id and sheet_name:
+        spreadsheet_data['is_set'] = True
+    
+    return sheet_id, sheet_name
 
-    return False
-
+#
 # Handler-related functions
-
+#
 def start(update: Update, context: CallbackContext) -> str:
     """Entry point for the `/settings` command"""
     keyboard = InlineKeyboardMarkup(entry_inline_kb)
@@ -213,6 +226,9 @@ def start(update: Update, context: CallbackContext) -> str:
 
     return SELECTING_ACTION
 
+#
+# Login functions
+#
 def start_login(update: Update, context: CallbackContext) -> str:
     """Check user's login data and start a new OAuth flow"""
     user_data = context.user_data
@@ -272,7 +288,7 @@ def store_auth_code(update: Update, context: CallbackContext) -> int:
     return END
 
 def reset_login(update: Update, context: CallbackContext) -> int:
-    """Reset the spreadsheet ID and/or sheet name"""
+    """Reset user's login data"""
     auth_data = context.user_data.get('auth')
     # Remove the token file
     pathlib.Path(auth_data['token_file']).unlink(missing_ok=True)
@@ -289,6 +305,10 @@ def reset_login(update: Update, context: CallbackContext) -> int:
 def show_login(update: Update, context: CallbackContext) -> int:
     """Show auth data stored"""
     auth_data = context.user_data.get('auth')
+    spreadsheet_data = context.user_data.get('spreadsheet')
+
+    logger.info(f"auth_data: {str(auth_data)}")
+    logger.info(f"spreadsheet_data: {str(spreadsheet_data)}")
 
     auth_data_str = """*Auth status*: {auth_status}
 
@@ -298,27 +318,95 @@ def show_login(update: Update, context: CallbackContext) -> int:
 
     status = dict.fromkeys(('auth_status', 'ss_status', 'id', 'name'), '❌')
     
+    # Check the login
     if check_auth(auth_data):
         status['auth_status'] = '✅'
-        if check_spreadsheet(auth_data):
+    
+    # Check the spreadsheet
+    ss_status = check_spreadsheet(spreadsheet_data)
+    if ss_status:
+        sheet_id, sheet_name = ss_status
+        if None not in (sheet_id, sheet_name):
             status['ss_status'] = '✅'
-            status['id'] = utils.escape_markdown(auth_data['spreadsheet']['id'])
-            status['name'] = utils.escape_markdown(auth_data['spreadsheet']['sheet_name'])
+        status['id'] = utils.escape_markdown(sheet_id or '❌')
+        status['name'] = utils.escape_markdown(sheet_name or '❌')
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(
         "Here's your login data:\n\n"
         f"{auth_data_str.format(**status)}\n\n"
-        "✅ = OK\n❌ = missing data",
+        "✅ \= OK\n❌ \= missing data",
         reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
     )
 
     return END
 
+#
+# Spreadsheet functions
+#
+def start_spreadsheet(update: Update, context: CallbackContext) -> str:
+    """Prompt the spreadsheet menu"""
+    # Initialize user data
+    user_data = context.user_data
+    if 'spreadsheet' not in user_data:
+        user_data['spreadsheet'] = {}
+
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text(
+        "Set or reset your spreadsheet:",
+        reply_markup=InlineKeyboardMarkup(spreadsheet_inline_kb)
+    )
+    return INPUT
+
+def prompt_spreadsheet(update: Update, context: CallbackContext) -> str:
+    """Prompt which property of a spreadsheet to set/reset"""
+    query = update.callback_query
+    user_data = context.user_data.get('spreadsheet')
+
+    choice = BUTTONS[query.data]
+    user_data['choice'] = choice.lower().replace(' ', '_')
+    
+    query.answer()
+    query.edit_message_text(f"Set the *{choice}* of the spreadsheet")
+    
+    return REPLY
+
+def set_spreadsheet(update: Update, context: CallbackContext) -> str:
+    """Set or reset a spreadsheet property"""
+    spreadsheet_data = context.user_data.get('spreadsheet')
+
+    logger.info(f"spreadsheet_data: {str(spreadsheet_data)}")
+
+    data = str(update.message.text)
+    choice = str(spreadsheet_data['choice'])
+    spreadsheet_data.update({choice: data})
+    del spreadsheet_data['choice']
+
+    logger.info(f"spreadsheet_data: {str(spreadsheet_data)}")
+
+    update.message.reply_text(
+        f"Done\! Spreadsheet *{choice.upper() if choice == 'id' else choice.replace('_', ' ').capitalize()}* has been set\.",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Back', callback_data=str(UP_ONE_LEVEL)))
+    )
+    return INPUT
+
+def up_one_level(update: Update, context: CallbackContext) -> int:
+    """Go back/up one level"""
+    update.callback_query.answer()
+    return start_spreadsheet(update, context)
+
+#
+# Other functions
+#
 def cancel(update: Update, _: CallbackContext) -> str:
     """Cancel the `settings` command"""
-    update.callback_query.answer()
-    update.callback_query.edit_message_text("Use `/settings` to enter the settings again or `/help` to know what I can do for you\.\nBye 👋")
+    text = "Use `/settings` to enter the settings or `/help` to know what I can do for you\.\nBye 👋"
+    if update.callback_query:
+        update.callback_query.answer()
+        update.callback_query.edit_message_text(text=text)
+    else:
+        update.message.reply_text(text=text)
     return STOPPING
 
 def stop(update: Update, _: CallbackContext) -> int:
@@ -347,13 +435,43 @@ login_handler = ConversationHandler(
     },
     fallbacks=[
         CommandHandler('cancel', cancel),
-        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$')
+        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+        CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
     ],
     map_to_parent={
         END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
         STOPPING: END,
     },
     name="login_second_level",
+    persistent=False
+)
+
+# Spreadsheet handler
+spreadsheet_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(start_spreadsheet, pattern=f'^{SPREADSHEET}$')
+    ],
+    states={
+        INPUT: [
+            CallbackQueryHandler(prompt_spreadsheet, pattern=f'^{ID}$|^{SHEET_NAME}$'),
+        ],
+        REPLY: [
+            MessageHandler(Filters.text & ~Filters.command, set_spreadsheet)
+        ],
+    },
+    fallbacks=[
+        CommandHandler('cancel', cancel),
+        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+        CallbackQueryHandler(up_one_level, pattern=f'^{UP_ONE_LEVEL}$'),
+        CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$')
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END,
+    },
+    name="spreadsheet_second_level",
     persistent=False
 )
 
@@ -365,12 +483,13 @@ settings_handler = ConversationHandler(
         states={
             SELECTING_ACTION: [
                 login_handler,
-                CallbackQueryHandler(stop, pattern=f'^{CANCEL}$'),
+                spreadsheet_handler,
                 CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
             ],
         },
         fallbacks=[
             CommandHandler('stop', stop),
+            CallbackQueryHandler(stop, pattern=f'^{CANCEL}$'),
         ],
         name="settings_top_level",
         persistent=False

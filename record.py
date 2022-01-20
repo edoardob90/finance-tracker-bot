@@ -149,15 +149,15 @@ f"""\- Currencies supported: '{', '.join(set(CURRENCIES.values()))}'\. You can a
 def prompt(update: Update, context: CallbackContext) -> str:
     """Ask user for info about a detail of a new record"""
     query = update.callback_query
-    data = query.data
+    choice = BUTTONS[query.data]
     user_data = context.user_data.get('record')
-    user_data['choice'] = BUTTONS[data].lower()
+    user_data['choice'] = choice.lower()
 
     query.answer()
 
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
-    query.edit_message_text(f"Enter the *{BUTTONS[data]}* of the new record") 
+    query.edit_message_text(f"Enter the *{choice}* of the new record") 
 
     return REPLY
 
@@ -221,44 +221,35 @@ def save(update: Update, context: CallbackContext) -> str:
 
     return INPUT
 
-def back_to_start(update: Update, context: CallbackContext) -> str:
-    """Go back to the start menu"""
-    update.callback_query.answer()
-    context.user_data['start_over'] = True
-    return start(update, context)
-
-def quick_save(update: Update, context: CallbackContext) -> None:
+def quick_save(update: Update, context: CallbackContext) -> str:
     """Quick-save a new record written on a single line. Fields must be comma-separated"""
-    match = re.match(r'^!\s*(.*)', update.message.text)
-    record_data = [x.strip() for x in match.group(1).split(',')]
-    
-    if not match:
-        update.message.reply_markdown_v2("Invalid record format\! Remember: it *must* start with a `!` and each field must be separated by a comma\. Example: `!10-3-2022, Cena in pizzeria, -100 EUR, BPM`\.")
-        return None 
+    # match = re.match(r'^!\s*(.*)', update.message.text)
+    record_data = [x.strip() for x in update.message.text[1:].split(',')]
     
     # Fill in the new record with the input data
     record = OrderedDict.fromkeys(RECORD_KEYS)
     for key, val in zip(('date', 'reason', 'amount', 'account'), record_data):
         record.update(utils.parse_data(key, val))
     
-    logger.info(f"record_data: {record_data}, record: {record}")
-    
     record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
     
     logger.info(f"User {update.message.from_user.id} added a quick record: {record}")
-
-    # Needed if the user never ran the `/record` command
-    if 'records' not in context.user_data:
-        context.user_data['records'] = []    
     
     context.user_data['records'].append(record)
-
-    logger.info(f"records: {context.user_data['records']}, record: {record}")
-
+    
     update.message.reply_markdown_v2(
         f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
-        "You can add a new record with the command `/record`\. 👋"
-        )
+        "You can add a new record with the command `/record`\. 👋",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
+    )
+
+    return INPUT
+
+def back_to_start(update: Update, context: CallbackContext) -> str:
+    """Go back to the start menu"""
+    update.callback_query.answer()
+    context.user_data['start_over'] = True
+    return start(update, context)
 
 def show_data(update: Update, context: CallbackContext) -> str:
     """Show the records saved so far"""
@@ -330,7 +321,7 @@ new_record_handler = ConversationHandler(
                     pattern='^' + '$|^'.join((DATE, REASON, AMOUNT, ACCOUNT)) + '$'
                 ),
                 CallbackQueryHandler(save, pattern=f'^{SAVE}$'),
-                CallbackQueryHandler(back_to_start, pattern=f'^' + str(END) + '$')
+                MessageHandler(Filters.text & Filters.regex(r'^!\s*(.*)'), quick_save),
             ],
             REPLY: [
                 MessageHandler(Filters.text & ~Filters.command, store)
@@ -338,7 +329,8 @@ new_record_handler = ConversationHandler(
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
-            CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$')
+            CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+            CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
         ],
         map_to_parent={
             END: SELECTING_ACTION,
@@ -359,11 +351,11 @@ record_handler = ConversationHandler(
             CallbackQueryHandler(show_data, pattern=f'^{SHOW}$'),
             CallbackQueryHandler(clear_data, pattern=f'^{CLEAR}$'),
             CallbackQueryHandler(stop, pattern=f'^{CANCEL}$'),
-            CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
         ],
     },
     fallbacks=[
-        CommandHandler('stop', stop)
+        CommandHandler('stop', stop),
+        CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
     ],
     name="record_top_level",
     persistent=False

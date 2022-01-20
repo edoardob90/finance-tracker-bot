@@ -24,7 +24,7 @@ from telegram.ext import (
 from constants import *
 from utils import remove_job_if_exists
 import record
-import auth
+import settings
 # import summary
 
 # Logging
@@ -57,7 +57,7 @@ def error_handler(update: Update, context: CallbackContext) -> None:
 
     # Which kind of error?
     if isinstance(context.error, ParserError):
-        update.message.reply_text("You entered an invalid date. Try again.")
+        update.message.reply_text("You entered an invalid date\. Try again\.")
     
     if developer_user_id:
         context.bot.send_message(chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML)
@@ -171,7 +171,7 @@ def main() -> None:
     # dispatcher.add_handler(record.quick_save_handler)
 
     # Register the `/settings` conversation handler
-    dispatcher.add_handler(auth.settings_handler)
+    dispatcher.add_handler(settings.settings_handler)
 
     # Register the `/summary` conversation handler
     # TODO: to be implemented
