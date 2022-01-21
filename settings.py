@@ -4,16 +4,9 @@ They handle Google authorization flow and Google sheet setup.
 """
 import pathlib
 import logging
-import json
 import re
-from typing import Union, Dict, Tuple
 import datetime as dtm
 from random import randrange
-
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google.auth.exceptions import UserAccessTokenError, RefreshError
 
 from telegram import (
     Update,
@@ -31,7 +24,6 @@ from telegram.ext import (
 
 from constants import *
 import utils
-import spreadsheet
 
 logging.basicConfig(
     format=log_format, level=log_level
@@ -115,112 +107,6 @@ schedule_inline_kb = [
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))] 
 ]
 
-# Utility functions
-
-class AuthError(Exception):
-    """Exception for an authentication error"""
-
-def oauth(credentials_file: str, token_file: str = None, code: str = None, user_data: Dict = None) -> Tuple[Union[Credentials, None], Union[None, str]]:
-    """Start the authorization flow and return a valid token or refresh an expired one"""
-    creds = None
-    result = None
-
-    logger.info(f'Current auth data: {user_data}')
-
-    # Look up credentials in `user_data` dictionary ...
-    if user_data is not None and 'creds' in user_data:
-        logger.info("Loading credentials from user_data dict")
-        creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), spreadsheet.SCOPES)
-    
-    # ... otherwise try to open `token_file`
-    elif token_file is not None and pathlib.Path(token_file).exists():
-        logger.info("Loading credentials from JSON file")
-        creds = Credentials.from_authorized_user_file(token_file, spreadsheet.SCOPES)
-
-    if creds is not None:
-        result = 'Credentials loaded from user data or a valid file\.'
-
-    if not creds or not creds.valid:
-        logger.info("Creds are invalid")
-        if creds and creds.expired and creds.refresh_token:
-            logger.info("Creds are expired")
-            try:
-                creds.refresh(Request())
-            except (UserAccessTokenError, RefreshError):
-                raise
-        else:
-            logger.info("New login: starting a new OAuth flow")
-            flow = Flow.from_client_secrets_file(
-                credentials_file,
-                scopes=spreadsheet.SCOPES,
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-
-            if code:
-                logger.info("Last OAuth step: fetching the token from the authorization code")
-                # We have an authorization code. This code is used to get the
-                # access token.
-                flow.fetch_token(code=code)
-                
-                # Get the credentials
-                try:
-                    creds=flow.credentials
-                except ValueError:
-                    logger.error("No valid token found in session")
-                    raise
-
-                # Store credentials
-                creds_stored = False
-                # in user_data dict ...
-                if user_data is not None:
-                    creds_stored = True
-                    user_data['creds'] = creds.to_json()
-
-                # ... and to a JSON file `token_file`
-                if token_file is not None:
-                    creds_stored = True
-                    user_data['token_file'] = token_file
-                    with pathlib.Path(token_file).open('w') as token:
-                        token.write(creds.to_json())
-
-                if creds_stored:
-                    result = 'Token has been saved\.'
-            else:
-                logger.info("OAuth step: asking the user to authorize the app and enter the authorization code")
-                # Tell the user to go to the authorization URL to get the authorization code
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
-    
-    return creds, result
-
-def check_auth(auth_data: Dict = None) -> bool:
-    """Check if the auth data for a user are valid"""
-    if auth_data is None:
-        return False
-    
-    if auth_data.get('auth_is_done'):
-        # First, check if credentials have been stored in `user_data` dict
-        if 'creds' in auth_data:
-            return True
-        # Check if a `token_file` has been saved, is a regular file and exists
-        if 'token_file' in auth_data:
-            token_file = pathlib.Path(auth_data['token_file'])
-            if token_file.is_file() and token_file.exists():
-                return True
-    
-    return False
-
-def check_spreadsheet(spreadsheet_data: Dict = None) -> Union[None, Tuple]:
-    """Check if the spreadsheet is set and is valid"""
-    if spreadsheet_data is None:
-        return None
-    
-    spreadsheet_data['is_set'] = False
-    sheet_id, sheet_name = spreadsheet_data.get('id'), spreadsheet_data.get('sheet_name') 
-    if sheet_id and sheet_name:
-        spreadsheet_data['is_set'] = True
-    
-    return sheet_id, sheet_name
-
 #
 # Handler-related functions
 #
@@ -260,9 +146,9 @@ def start_login(update: Update, context: CallbackContext) -> str:
         auth_data['token_file'] = f"{DATA_DIR}/auth_{str(query.from_user.id)}.json"
 
     # Check if the auth step has been already done
-    if not check_auth(auth_data):
+    if not utils.check_auth(auth_data):
         # Start the OAuth2 process
-        _, result = oauth(
+        _, result = utils.oauth(
             credentials_file=CREDS,
             token_file=auth_data['token_file'],
             user_data=auth_data
@@ -282,7 +168,7 @@ def store_auth_code(update: Update, context: CallbackContext) -> int:
     
     auth_data = context.user_data.get('auth')
     code = update.message.text
-    creds, result = oauth(
+    creds, result = utils.oauth(
         credentials_file=CREDS,
         token_file=auth_data['token_file'],
         user_data=auth_data,
@@ -333,13 +219,12 @@ def show_login(update: Update, context: CallbackContext) -> int:
     status = dict.fromkeys(('auth_status', 'ss_status', 'id', 'name'), '❌')
     
     # Check the login
-    if check_auth(auth_data):
+    if utils.check_auth(auth_data):
         status['auth_status'] = '✅'
     
     # Check the spreadsheet
-    ss_status = check_spreadsheet(spreadsheet_data)
-    if ss_status:
-        sheet_id, sheet_name = ss_status
+    if utils.check_spreadsheet(spreadsheet_data):
+        sheet_id, sheet_name = spreadsheet_data.get('id'), spreadsheet_data.get('sheet_name')
         if None not in (sheet_id, sheet_name):
             status['ss_status'] = '✅'
         status['id'] = utils.escape_markdown(sheet_id or '❌')
@@ -456,8 +341,8 @@ def prompt_custom_schedule(update: Update, context: CallbackContext) -> str:
         "Okay, tell me when you want me to append your data to the spreadsheet\. You can use the following specifications:\n"
         "\- `now`: immediately\n"
         "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
-        "\- `daily HH:MM`: every day at the specified time\n"
-        "\- `monthly DD HH:MM`: every month at the specified day and time\n"
+        "\- `d\[aily\] HH:MM`: every day at the specified time\n"
+        "\- `m\[onthly\] DD HH:MM`: every month at the specified day and time\n"
     )
 
     return INPUT
@@ -506,15 +391,10 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
             f"Your data will be appended {when}",
             reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
         )
-        return INPUT
- 
     # Try the 3rd and 4th time specs
-    if ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
+    elif ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
         job_when = match.groupdict()
-    
-    if job_when:
-        if 'day' in job_when:
-            day = job_when.pop('day')
+        if (day := job_when.pop('day', None)) is not None:
             context.job_queue.run_monthly(
                 utils.add_to_spreadsheet,
                 when=dtm.time(**job_when),

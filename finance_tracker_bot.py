@@ -91,11 +91,11 @@ def print_help(update: Update, _: CallbackContext) -> None:
     """
     update.message.reply_markdown_v2("""*Supported commands:*
 
-\- `/start`: start the bot and schedule a daily task to append the saved records to the spreadsheet\. The task runs every day at 23:59, and its time cannot be changed by the user \(*yet*\)\. You can manually append your data with the `/append_data` command \(see below\)
+\- `/start`: start the bot
 
 \- `/record`: enter the Record Menu: add a new expense/income, show the saved records, or clear your records
 
-\- `/settings`: enter the Settings menu: login with your Google account, set the spreadsheet where to append your data, or set when I should append the records you saved to the spreadsheet
+\- `/settings`: enter the Settings menu: login with your Google account, set the spreadsheet where to append your data, or schedule when I should append your records to the spreadsheet
 
 \- `/summary`: enter the Summary menu where you can query the data saved in your spreadsheet
 

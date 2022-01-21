@@ -24,12 +24,8 @@ from telegram.ext import (
     MessageHandler,
 )
 
-import gspread
 from constants import *
 import utils
-# import auth
-# import spreadsheet
-# from spreadsheet import SpreadsheetError
 
 # Enable logging
 logging.basicConfig(format=log_format, level=log_level)
