@@ -2,6 +2,7 @@
 Utils module
 """
 import re
+import logging
 from functools import partial
 from typing import List, Tuple, Union, Dict, Any
 from dateutil.parser import parse
@@ -10,6 +11,12 @@ from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown
 
 from constants import *
+
+# Logging
+logging.basicConfig(
+    format=log_format, level=log_level
+)
+logger = logging.getLogger(__name__)
 
 # Partial function with version=2 of Markdown parsing
 escape_markdown = partial(escape_markdown, version=2)
@@ -75,3 +82,9 @@ def stop(command: str, action: str, update: Update) -> int:
     else:
         update.message.reply_text(text=text)
     return END
+
+def add_to_spreadsheet(context: CallbackContext) -> None:
+    """Task for `telegram.ext.JobQueue` to add locally saved records to the spreadsheet"""
+    user_id, user_data = context.job.context
+    logger.warning(f"DUMMY scheduling a new job for user {user_id}")
+    return None

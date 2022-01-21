@@ -277,15 +277,12 @@ def show_data(update: Update, context: CallbackContext) -> str:
     
     records = context.user_data.get('records')
     if records:
-        # Check if there's a scheduled job to append data
-        jobs = context.job_queue.get_jobs_by_name(str(query.from_user.id) + '_append_data')
-        next_time = f"{jobs[0].next_t.strftime('%d/%m/%Y, %H:%M')}" if (jobs and jobs[0] is not None) else 'never'
         records_to_str = '\n\=\=\=\n'.join(map(utils.data_to_str, records))
         
         logger.info("Records:\n{}".format(records))
         
         query.edit_message_text(
-            text=f"These are the records added so far:\n\n{records_to_str}\n\nThese will be added to the spreadsheet on: *{next_time}*\.",
+            text=f"These are the records added so far:\n\n{records_to_str}",
             reply_markup=keyboard
         )
     else:

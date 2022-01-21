@@ -6,7 +6,6 @@ import html
 import json
 import logging
 import pytz
-from datetime import time
 from dateutil.parser import ParserError
 from telegram import (
     Update,
@@ -22,7 +21,6 @@ from telegram.ext import (
 )
 
 from constants import *
-from utils import remove_job_if_exists
 import record
 import settings
 

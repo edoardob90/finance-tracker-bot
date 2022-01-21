@@ -2,12 +2,14 @@
 Bot functions for `/auth` command.
 They handle Google authorization flow and Google sheet setup.
 """
-from curses import use_default_colors
-from multiprocessing.sharedctypes import Value
 import pathlib
 import logging
 import json
+import re
 from typing import Union, Dict, Tuple
+import datetime as dtm
+from random import randrange
+
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -41,10 +43,11 @@ logger = logging.getLogger(__name__)
     SELECTING_ACTION,
     NEW_LOGIN,
     EDIT_LOGIN,
+    SET_SCHEDULE, 
     REPLY,
     INPUT,
     STOPPING,
-) = map(chr, range(6))
+) = map(chr, range(7))
 
 # Constants for CallbackQuery data
 (
@@ -60,7 +63,9 @@ logger = logging.getLogger(__name__)
     RESET,
     ID,
     SHEET_NAME,
-) = map(chr, range(6, 18))
+    DEFAULT_SCHEDULE,
+    CUSTOM_SCHEDULE,
+) = map(chr, range(7, 21))
 
 #
 # Inline Keyboards
@@ -100,6 +105,15 @@ BUTTONS = dict(
        ('ID', 'Sheet name')
     )
 )
+
+# Schedule keyboard
+schedule_inline_kb = [ 
+    [ 
+        InlineKeyboardButton(text='Default', callback_data=str(DEFAULT_SCHEDULE)),
+        InlineKeyboardButton(text='Custom', callback_data=str(CUSTOM_SCHEDULE))
+    ],
+    [InlineKeyboardButton(text='Back', callback_data=str(BACK))] 
+]
 
 # Utility functions
 
@@ -397,6 +411,137 @@ def up_one_level(update: Update, context: CallbackContext) -> int:
     return start_spreadsheet(update, context)
 
 #
+# Schedule functions
+#
+def start_schedule(update: Update, context: CallbackContext) -> str:
+    """Prompt the schedule menu"""
+    query = update.callback_query
+    query.answer()
+
+    # Check if there's a scheduled job to append data
+    jobs = context.job_queue.get_jobs_by_name('append_data_' + str(query.from_user.id))
+    logger.info(f"Queued jobs: {str(jobs)}")
+    next_time = f"{jobs[0].next_t.strftime('%d/%m/%Y, %H:%M')}" if (jobs and jobs[0] is not None) else 'never'
+    
+    text = f"Your data will be added to the spreadsheet on: *{next_time}*\. Do you want to make a change?"
+    query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(schedule_inline_kb))
+
+    return SET_SCHEDULE
+
+def set_default_schedule(update: Update, context: CallbackContext) -> str:
+    """Set the default schedule"""
+    query = update.callback_query
+    query.answer()
+
+    user_id = query.from_user.id
+    utils.remove_job_if_exists('append_data_' + str(user_id), context)
+    context.job_queue.run_daily(
+        utils.add_to_spreadsheet,
+        time=dtm.time(23, 59, randrange(0, 60)),
+        context=(user_id, context.user_data),
+        name='append_data_' + str(user_id)
+    )
+
+    query.edit_message_text(
+        "Okay, I will add your data to the spreadsheet *every day at 23:59*\.",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+    )
+
+    return SET_SCHEDULE
+
+def prompt_custom_schedule(update: Update, context: CallbackContext) -> str:
+    """Prompt the user to enter a new schedule time/date"""
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        "Okay, tell me when you want me to append your data to the spreadsheet\. You can use the following specifications:\n"
+        "\- `now`: immediately\n"
+        "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
+        "\- `daily HH:MM`: every day at the specified time\n"
+        "\- `monthly DD HH:MM`: every month at the specified day and time\n"
+    )
+
+    return INPUT
+
+def set_custom_schedule(update: Update, context: CallbackContext) -> str:
+    """
+    Set a custom schedule
+    
+    Supported formats:
+        - `now`: run once almost immediately
+        - `HH:MM`: run once at the specified time
+        - `daily HH:MM`: run daily at the specified time
+        - `monthly DD HH:MM`: run monthly at the specified day `DD` and time
+    """
+    when_text = update.message.text
+    user_id = update.message.from_user.id
+    job_name = f'append_data_{user_id}'
+    job_when = None
+    
+    # Remove any previous job, if any
+    utils.remove_job_if_exists(job_name, context)
+    
+    # Parse the new time/date
+    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2}))')
+    daily_pattern = re.compile(r'(d|daily) (?P<hour>\d{2}):(?P<minute>\d{2})')
+    monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})')
+
+    # Try the first two time specs
+    if ( match := once_pattern.match(when_text) ) is not None:
+        hour, minute = match.groupdict().values()
+        if not (hour and minute):
+            job_when = dtm.datetime.now() + dtm.timedelta(seconds=1)
+            when = '*now*'
+        else:
+            job_when = dtm.time(hour=int(hour), minute=int(minute))
+            when = f'*once* at *{hour}:{minute}*'
+        
+        context.job_queue.run_once(
+                utils.add_to_spreadsheet,
+                when=job_when,
+                context=(user_id, context.user_data),
+                name=job_name
+            )
+
+        update.message.reply_text(
+            f"Your data will be appended {when}",
+            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+        )
+        return INPUT
+ 
+    # Try the 3rd and 4th time specs
+    if ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
+        job_when = match.groupdict()
+    
+    if job_when:
+        if 'day' in job_when:
+            day = job_when.pop('day')
+            context.job_queue.run_monthly(
+                utils.add_to_spreadsheet,
+                when=dtm.time(**job_when),
+                day=day,
+                context=(user_id, context.user_data),
+                name=job_name
+            )
+            when = f"on *{day}* every month at *{job_when['hour']}:{job_when['minute']}*"
+        else:
+            context.job_queue.run_daily(
+                utils.add_to_spreadsheet,
+                when=dtm.time(**job_when),
+                context=(user_id, context.user_data),
+                name=job_name
+            )
+            when = f"every day at *{job_when['hour']}:{job_when['minute']}*"
+        
+        update.message.reply_text(
+            f"Your data will be appended {when}",
+            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+        )
+    else:
+        update.message.reply_text("⚠️ You entered an invalid time specification\. Try again or use `/cancel` to stop\.")
+
+    return INPUT
+
+#
 # Other functions
 #
 def cancel(update: Update, _: CallbackContext) -> str:
@@ -475,6 +620,34 @@ spreadsheet_handler = ConversationHandler(
     persistent=False
 )
 
+# Schedule handler
+schedule_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(start_schedule, pattern=f'^{SCHEDULE}$')
+    ],
+    states={
+        SET_SCHEDULE: [
+            CallbackQueryHandler(set_default_schedule, pattern=f'^{DEFAULT_SCHEDULE}$'),
+            CallbackQueryHandler(prompt_custom_schedule, pattern=f'^{CUSTOM_SCHEDULE}$'),
+        ],
+        INPUT: [
+            MessageHandler(Filters.text & ~Filters.command, set_custom_schedule),
+        ],
+    },
+    fallbacks=[
+        CommandHandler('cancel', cancel),
+        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+        CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END
+    },
+    name="schedule_second_level",
+    persistent=False
+)
+
 # Top-level conversation handler
 settings_handler = ConversationHandler(
         entry_points=[
@@ -484,6 +657,7 @@ settings_handler = ConversationHandler(
             SELECTING_ACTION: [
                 login_handler,
                 spreadsheet_handler,
+                schedule_handler,
                 CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
             ],
         },
