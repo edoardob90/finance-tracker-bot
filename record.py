@@ -2,6 +2,7 @@
 Bot functions for the `/record` command
 """
 import logging
+from pydoc import text
 import re
 from tracemalloc import stop
 from typing import OrderedDict
@@ -47,9 +48,10 @@ RECORD_KEYS = ('date',
 (
     SELECTING_ACTION,
     INPUT,
+    QUICK_INPUT,
     REPLY,
     STOPPING,
-) = map(chr, range(4))
+) = map(chr, range(5))
 
 # Constants for CallbackQuery data
 ( 
@@ -61,10 +63,11 @@ RECORD_KEYS = ('date',
     AMOUNT,
     ACCOUNT,
     SAVE,
+    QUICK_RECORD,
     CANCEL,
     BACK,
     STOP,
-) = map(chr, range(4, 15))
+) = map(chr, range(5, 17))
 
 #
 # Inline keyboards
@@ -103,6 +106,7 @@ record_inline_kb = [
     ],
     [
         InlineKeyboardButton(text='Save', callback_data=str(SAVE)),
+        InlineKeyboardButton(text='Quick record', callback_data=str(QUICK_RECORD)),
         InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL))
     ]
 ]
@@ -221,10 +225,23 @@ def save(update: Update, context: CallbackContext) -> str:
 
     return INPUT
 
+def quick_input(update: Update, _: CallbackContext) -> str:
+    """Enter the quick-save mode"""
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        """Okay, send me a message with the following format to quickly add a new record:
+
+```
+<date>, <reason>, <amount>, <account>
+```
+You must use commas \(`,`\) *only* to separate the fields\."""
+    )
+    return QUICK_INPUT
+
 def quick_save(update: Update, context: CallbackContext) -> str:
     """Quick-save a new record written on a single line. Fields must be comma-separated"""
     # match = re.match(r'^!\s*(.*)', update.message.text)
-    record_data = [x.strip() for x in update.message.text[1:].split(',')]
+    record_data = [x.strip() for x in update.message.text.split(',')]
     
     # Fill in the new record with the input data
     record = OrderedDict.fromkeys(RECORD_KEYS)
@@ -239,11 +256,10 @@ def quick_save(update: Update, context: CallbackContext) -> str:
     
     update.message.reply_markdown_v2(
         f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
-        "You can add a new record with the command `/record`\. 👋",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
+        "You can add a new record with the command `/record`\. 👋"
     )
 
-    return INPUT
+    return STOPPING
 
 def back_to_start(update: Update, context: CallbackContext) -> str:
     """Go back to the start menu"""
@@ -321,7 +337,10 @@ new_record_handler = ConversationHandler(
                     pattern='^' + '$|^'.join((DATE, REASON, AMOUNT, ACCOUNT)) + '$'
                 ),
                 CallbackQueryHandler(save, pattern=f'^{SAVE}$'),
-                MessageHandler(Filters.text & Filters.regex(r'^!\s*(.*)'), quick_save),
+                CallbackQueryHandler(quick_input, pattern=f'{QUICK_RECORD}$'),
+            ],
+            QUICK_INPUT: [
+                MessageHandler(Filters.text & ~Filters.command, quick_save),
             ],
             REPLY: [
                 MessageHandler(Filters.text & ~Filters.command, store)
@@ -360,127 +379,3 @@ record_handler = ConversationHandler(
     name="record_top_level",
     persistent=False
 )
-
-# An additional handler for the quick-save command
-# quick_save_handler = MessageHandler(Filters.regex(r'^!'), quick_save)
-
-
-#
-# def add_to_spreadsheet(context: CallbackContext) -> None:
-#     """Daily task for `telegram.ext.JobQueue` to add records to the spreadsheet"""
-#     user_id, user_data = context.job.context
-#     records = user_data.get('records')
-   
-#     logger.info(f"user_data: {str(user_data)}, records: {str(records)}")
-
-#     if not records:
-#         logger.info(f"Skipping scheduled task for user_id {user_id}: no records to append.")
-#         context.bot.send_message(user_id, "There are no records to append\.", disable_notification=True)
-#     else:
-#         # Get the auth_data
-#         auth_data = user_data.get('auth')
-
-#         # Append the record to the spreadsheet
-#         if auth.check_spreadsheet(auth_data):
-#             # Get the credentials and open the connection with the spreadsheet
-#             creds = auth.oauth(
-#                 credentials_file=CREDS,
-#                 token_file=auth_data['token_file'],
-#                 user_data=auth_data
-#             )
-#             client = gspread.Client(auth=creds)
-#             ss = spreadsheet.Spreadsheet(
-#                     client=client,
-#                     spreadsheet_id=auth_data['spreadsheet']['id'],
-#                     sheet_name=auth_data['spreadsheet']['sheet_name']) 
-#             try:
-#                 values = [list(record.values()) for record in records]
-#                 ss.append_records(values)
-#             except:
-#                     logger.error("Something went wrong while appending the record to the spreadsheet")
-#                     context.bot.send_message(user_id, text="⚠️ Something went wrong while appending the record to the spreadsheet\. ⚠️")
-#                     raise
-#             else:
-#                 context.bot.send_message(
-#                     user_id,
-#                     text=f"On {dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}, *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
-#                     disable_notification=True
-#                 )
-#                 records.clear()
-#         else:
-#             context.bot.send_message(user_id, text="I cannot add the records to the spreadsheet because the authorization was incomplete or you did not set the spreadsheet ID and/or name\. "
-#             "Use the command `/auth` to complete the authentication or `/reset` to set the spreadsheet ID and/or name\.")
-
-#     return None
-
-#
-# def append_data(update: Update, context: CallbackContext) -> int:
-#     """Force/schedule the append to the spreadsheet"""
-#     user_id = update.message.from_user.id
-
-#     if not context.user_data['records']:
-#         update.message.reply_text("There are no records to append\.")
-#     else:
-#         if context.args and context.args[0] == 'now':
-#             # Append immediately (within ~1 second)
-#             utils.remove_job_if_exists(str(user_id) + '_force_append_data', context)
-#             context.job_queue.run_once(
-#                 add_to_spreadsheet,
-#                 when=dtm.datetime.now() + dtm.timedelta(seconds=0.1),
-#                 context=(user_id, context.user_data),
-#                 name=str(user_id) + '_force_append_data')
-            
-#         else:
-#             # Schedule the append at midnight
-#             utils.remove_job_if_exists(str(user_id) + '_append_data', context)
-#             context.job_queue.run_daily(
-#                 add_to_spreadsheet,
-#                 time=dtm.time(23, 59, randrange(0, 60)),
-#                 context=(user_id, context.user_data),
-#                 name=str(user_id) + '_append_data'
-#             )
-
-#             update.message.reply_markdown_v2(f"Your data will be added to the spreadsheet on {dtm.datetime.today().strftime('%d/%m/%Y')} at 23:59\.")
-
-#     return ConversationHandler.END
-
-#
-## Create a reply markup with buttons corresponding to the 'Accounts' saved in the 'Categories' sheet of the spreadsheet
-# if user_data['choice'] == 'account':
-#     # Fetch the accounts list the first time
-#     if 'accounts' not in context.user_data:
-#         auth_data = context.user_data.get('auth')
-#         if auth.check_spreadsheet(auth_data):
-#             creds = auth.oauth(
-#                 credentials_file=CREDS,
-#                 user_data=auth_data,
-#                 token_file=auth_data['token_file'])
-            
-#             ss = spreadsheet.Spreadsheet(
-#                 client=gspread.Client(auth=creds),
-#                 spreadsheet_id=auth_data['spreadsheet']['id'],
-#                 sheet_name='Categories'
-#             )
-
-#             try:
-#                 # 'Accounts' column must be between cell O3 and O30
-#                 accounts = [x[0] for x in ss.get_records(range_='O3:O30')]
-#             except SpreadsheetError:
-#                 logger.warning("An error occurred while trying to fetch the 'Accounts' column in the 'Categories' sheet")
-#             else:
-#                 context.user_data['accounts'] = accounts
-    
-#     # Accounts have been already fetched from the spreadsheet
-#     accounts = context.user_data.get('accounts')
-    
-#     # Delete the message associated with the callback query
-#     query.delete_message()
-    
-#     reply_markup = ReplyKeyboardMarkup([accounts], one_time_keyboard=True) if accounts else None
-#     context.bot.send_message(
-#         query.from_user.id,
-#         f"{'Choose' if reply_markup else 'Enter'} the *Account*",
-#         reply_markup=reply_markup
-#     )
-# else:
-#   ...
