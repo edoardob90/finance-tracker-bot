@@ -57,7 +57,8 @@ logger = logging.getLogger(__name__)
     SHEET_NAME,
     DEFAULT_SCHEDULE,
     CUSTOM_SCHEDULE,
-) = map(chr, range(7, 21))
+    REMOVE_SCHEDULE,
+) = map(chr, range(7, 22))
 
 #
 # Inline Keyboards
@@ -71,7 +72,7 @@ entry_inline_kb = [
         InlineKeyboardButton(text='📊 Spreadsheet', callback_data=str(SPREADSHEET)),
         InlineKeyboardButton(text='📆 Schedule', callback_data=str(SCHEDULE)),
     ],
-    [InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL))]
+    [InlineKeyboardButton(text='🚪 Exit', callback_data=str(CANCEL))]
 ]
 
 # Login keyboard
@@ -86,8 +87,8 @@ edit_login_inline_kb = [
 # Spreadsheet keyboard
 spreadsheet_inline_kb = [
     [ 
-        InlineKeyboardButton(text='ID', callback_data=str(ID)),
-        InlineKeyboardButton(text='Sheet name', callback_data=str(SHEET_NAME))
+        InlineKeyboardButton(text='Set the ID', callback_data=str(ID)),
+        InlineKeyboardButton(text='Set the Sheet name', callback_data=str(SHEET_NAME))
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
 ]
@@ -102,7 +103,8 @@ BUTTONS = dict(
 schedule_inline_kb = [ 
     [ 
         InlineKeyboardButton(text='Default', callback_data=str(DEFAULT_SCHEDULE)),
-        InlineKeyboardButton(text='Custom', callback_data=str(CUSTOM_SCHEDULE))
+        InlineKeyboardButton(text='Custom schedule', callback_data=str(CUSTOM_SCHEDULE)),
+        InlineKeyboardButton(text='Remove schedule', callback_data=str(REMOVE_SCHEDULE)),
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))] 
 ]
@@ -149,6 +151,7 @@ def start_login(update: Update, context: CallbackContext) -> str:
     if not utils.check_auth(auth_data):
         # Start the OAuth2 process
         _, result = utils.oauth(
+            first_login=True,
             credentials_file=CREDS,
             token_file=auth_data['token_file'],
             user_data=auth_data
@@ -308,7 +311,7 @@ def start_schedule(update: Update, context: CallbackContext) -> str:
     logger.info(f"Queued jobs: {str(jobs)}")
     next_time = f"{jobs[0].next_t.strftime('%d/%m/%Y, %H:%M')}" if (jobs and jobs[0] is not None) else 'never'
     
-    text = f"Your data will be added to the spreadsheet on: *{next_time}*\. Do you want to make a change?"
+    text = f"Your data will be added to the spreadsheet on: *{next_time}*\.\nDo you want to change the schedule?"
     query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(schedule_inline_kb))
 
     return SET_SCHEDULE
@@ -327,22 +330,20 @@ def set_default_schedule(update: Update, context: CallbackContext) -> str:
         name='append_data_' + str(user_id)
     )
 
-    query.edit_message_text(
-        "Okay, I will add your data to the spreadsheet *every day at 23:59*\.",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
-    )
+    query.edit_message_text("Okay, I will add your data to the spreadsheet *every day at 23:59*\.\nBye 👋")
 
-    return SET_SCHEDULE
+    return STOPPING
 
-def prompt_custom_schedule(update: Update, context: CallbackContext) -> str:
+def prompt_custom_schedule(update: Update, _: CallbackContext) -> str:
     """Prompt the user to enter a new schedule time/date"""
     update.callback_query.answer()
     update.callback_query.edit_message_text(
-        "Okay, tell me when you want me to append your data to the spreadsheet\. You can use the following specifications:\n"
+        "Okay, tell me when you want me to append your data to the spreadsheet\. You can use the following time specifications:\n"
         "\- `now`: immediately\n"
+        "\- `SS`: within `SS` seconds from now\n"
         "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
         "\- `d\[aily\] HH:MM`: every day at the specified time\n"
-        "\- `m\[onthly\] DD HH:MM`: every month at the specified day and time\n"
+        "\- `m\[onthly\] DD HH:MM`: every month at the specified day \(`DD`\) and time \(`HH:MM`\)\n"
     )
 
     return INPUT
@@ -353,10 +354,12 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     
     Supported formats:
         - `now`: run once almost immediately
+        - `SS`: run this many seconds from now
         - `HH:MM`: run once at the specified time
         - `daily HH:MM`: run daily at the specified time
         - `monthly DD HH:MM`: run monthly at the specified day `DD` and time
     """
+    schedule_is_valid = False
     when_text = update.message.text
     user_id = update.message.from_user.id
     job_name = f'append_data_{user_id}'
@@ -366,19 +369,23 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     utils.remove_job_if_exists(job_name, context)
     
     # Parse the new time/date
-    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2}))')
+    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{2}))')
     daily_pattern = re.compile(r'(d|daily) (?P<hour>\d{2}):(?P<minute>\d{2})')
     monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})')
 
-    # Try the first two time specs
+    # Try the first three time specs
     if ( match := once_pattern.match(when_text) ) is not None:
-        hour, minute = match.groupdict().values()
-        if not (hour and minute):
-            job_when = dtm.datetime.now() + dtm.timedelta(seconds=1)
-            when = '*now*'
-        else:
+        schedule_is_valid = True
+        hour, minute, seconds = match.groupdict().values()
+        if hour and minute:
             job_when = dtm.time(hour=int(hour), minute=int(minute))
             when = f'*once* at *{hour}:{minute}*'
+        elif seconds:
+            job_when = int(seconds)
+            when = f"*in {seconds} second{'s' if job_when > 1 else ''} from now*"
+        else:
+            job_when = dtm.datetime.now() + dtm.timedelta(seconds=0.5)
+            when = '*now*'
         
         context.job_queue.run_once(
                 utils.add_to_spreadsheet,
@@ -386,14 +393,10 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 context=(user_id, context.user_data),
                 name=job_name
             )
-
-        update.message.reply_text(
-            f"Your data will be appended {when}",
-            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
-        )
-    # Try the 3rd and 4th time specs
+    # Try the 'daily' or 'monthly' time specs
     elif ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
-        job_when = match.groupdict()
+        schedule_is_valid = True
+        job_when = {key: int(value) for key, value in match.groupdict().items()}
         if (day := job_when.pop('day', None)) is not None:
             context.job_queue.run_monthly(
                 utils.add_to_spreadsheet,
@@ -411,13 +414,38 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 name=job_name
             )
             when = f"every day at *{job_when['hour']}:{job_when['minute']}*"
-        
-        update.message.reply_text(
-            f"Your data will be appended {when}",
-            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
-        )
+    
+    if schedule_is_valid:
+        update.message.reply_text(f"Your data will be appended {when}\.\nBye 👋")
+        return STOPPING
     else:
-        update.message.reply_text("⚠️ You entered an invalid time specification\. Try again or use `/cancel` to stop\.")
+        update.message.reply_text(
+            "⚠️ You entered an invalid time specification\. Try again or use `/cancel` to stop\.\n"
+            "You can use the following time specifications:\n"
+            "\- `now`: immediately\n"
+            "\- `SS`: within `SS` seconds from now\n"
+            "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
+            "\- `d\[aily\] HH:MM`: every day at the specified time\n"
+            "\- `m\[onthly\] DD HH:MM`: every month at the specified day \(`DD`\) and time \(`HH:MM`\)\n"
+        )
+        return INPUT
+
+def remove_schedule(update: Update, context: CallbackContext) -> str:
+    """Remove any scheduled job"""
+    query = update.callback_query
+    query.answer()
+    user_id = query.from_user.id
+    job_name = f'append_data_{user_id}'
+
+    if utils.remove_job_if_exists(job_name, context):
+        text="Any scheduled job to add data to your spreadsheet has been *removed*\."
+    else:
+        text="⚠️ I did not find any job to remove\. Have you ever added one?"
+
+    query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+    )
 
     return INPUT
 
@@ -509,6 +537,7 @@ schedule_handler = ConversationHandler(
         SET_SCHEDULE: [
             CallbackQueryHandler(set_default_schedule, pattern=f'^{DEFAULT_SCHEDULE}$'),
             CallbackQueryHandler(prompt_custom_schedule, pattern=f'^{CUSTOM_SCHEDULE}$'),
+            CallbackQueryHandler(remove_schedule, pattern=f'^{REMOVE_SCHEDULE}$'),
         ],
         INPUT: [
             MessageHandler(Filters.text & ~Filters.command, set_custom_schedule),

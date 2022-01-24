@@ -78,7 +78,7 @@ entry_inline_kb = [
         InlineKeyboardButton(text='🗑 Clear records', callback_data=str(CLEAR))
     ],
     [
-        InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL))
+        InlineKeyboardButton(text='🚪 Exit', callback_data=str(CANCEL))
     ]
 ]
 
@@ -117,7 +117,7 @@ def start(update: Update, context: CallbackContext) -> str:
         update.callback_query.answer()
         update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
     else:
-        update.message.reply_markdown_v2(text=text, reply_markup=keyboard)
+        update.message.reply_text(text=text, reply_markup=keyboard)
     
     user_data['start_over'] = False
     
@@ -139,7 +139,7 @@ f"""\- Currencies supported: '{', '.join(set(CURRENCIES.values()))}'\. You can a
     user_data = context.user_data
     if 'record' not in user_data:
         # a single empty record
-        user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
+        user_data['record'] = OrderedDict()
     # the list of all the records to append
     if 'records' not in user_data:
         user_data['records'] = []
@@ -170,7 +170,7 @@ def store(update: Update, context: CallbackContext) -> str:
     user_data.update(utils.parse_data(category, data))
     del user_data['choice']
 
-    update.message.reply_markdown_v2(
+    update.message.reply_text(
         f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n"
         f"{utils.data_to_str(user_data)}",
         reply_markup=InlineKeyboardMarkup(record_inline_kb)
@@ -185,13 +185,12 @@ def save(update: Update, context: CallbackContext) -> str:
     record = context.user_data.get('record')
     records = context.user_data.get('records')
     query = update.callback_query
+    query.answer()
 
     logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
     if 'choice' in record:
         del record['choice']
-
-    query.answer()
 
     # Warn the user when trying to save an empty record
     if not record:
@@ -208,9 +207,8 @@ def save(update: Update, context: CallbackContext) -> str:
     records.append(deepcopy(record))
 
     query.edit_message_text(
-        f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
-        "You can add a new record with the command `/record`\. Bye 👋",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(END)))
+        f"This is the record just saved:\n\n{utils.data_to_str(record)}",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
     )
     
     # Reset the current record to an empty record
@@ -230,7 +228,8 @@ def quick_input(update: Update, _: CallbackContext) -> str:
 ```
 <date>, <reason>, <amount>, <account>
 ```
-You must use commas \(`,`\) *only* to separate the fields\."""
+You must use commas \(`,`\) *only* to separate the fields\.""",
+    reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
     )
     return QUICK_INPUT
 
@@ -250,7 +249,7 @@ def quick_save(update: Update, context: CallbackContext) -> str:
     
     context.user_data['records'].append(record)
     
-    update.message.reply_markdown_v2(
+    update.message.reply_text(
         f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
         "You can add a new record with the command `/record`\. 👋"
     )
@@ -331,6 +330,7 @@ new_record_handler = ConversationHandler(
                 ),
                 CallbackQueryHandler(save, pattern=f'^{SAVE}$'),
                 CallbackQueryHandler(quick_input, pattern=f'{QUICK_RECORD}$'),
+                CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
             ],
             QUICK_INPUT: [
                 MessageHandler(Filters.text & ~Filters.command, quick_save),
@@ -342,10 +342,10 @@ new_record_handler = ConversationHandler(
         fallbacks=[
             CommandHandler('cancel', cancel),
             CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
-            CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
         ],
         map_to_parent={
             END: SELECTING_ACTION,
+            SELECTING_ACTION: SELECTING_ACTION,
             STOPPING: END,
         },
         name="record_second_level",

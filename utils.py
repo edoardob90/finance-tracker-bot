@@ -10,7 +10,7 @@ from typing import List, Tuple, Union, Dict, Any
 import datetime as dtm
 from dateutil.parser import parse
 
-from telegram import InlineKeyboardButton, Update
+from telegram import Update
 from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown
 
@@ -46,14 +46,6 @@ def stop(command: str, action: str, update: Update) -> int:
         update.message.reply_text(text=text)
     return END
 
-#
-# Record
-#
-def inline_kb_row(buttons: Union[Tuple, List], offset: int = 0) -> List[InlineKeyboardButton]:
-    """Build a keyboard row from a list of buttons"""
-    _buttons = [{'text': x, 'callback_data': str(y)} for y, x in enumerate(buttons, start=offset)]
-    return list(map(lambda x: InlineKeyboardButton(**x), _buttons))
-
 def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
     """Remove job with given name. Returns whether job was removed."""
     current_jobs = context.job_queue.get_jobs_by_name(name)
@@ -63,6 +55,9 @@ def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
         job.schedule_removal()
     return True
 
+#
+# Record
+#
 def data_to_str(data: Dict[str, Any]) -> str:
     """Build a string concatenating all values in a data `Dict`"""
     facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items()]
@@ -105,22 +100,22 @@ def parse_data(key: str, value: str) -> Dict:
 #
 # Settings
 #
-def oauth(credentials_file: str = None, token_file: str = None, code: str = None, user_data: Dict = None) -> Tuple[Union[Credentials, None], Union[None, str]]:
+def oauth(first_login: bool = False, credentials_file: str = None, token_file: str = None, code: str = None, user_data: Dict = None) -> Tuple[Union[Credentials, None], Union[None, str]]:
     """Start the authorization flow and return a valid token or refresh an expired one"""
     creds = None
     result = None
 
     logger.info(f'Current auth data: {user_data}')
 
-    # Look up credentials in `user_data` dictionary ...
-    if user_data is not None and 'creds' in user_data:
-        logger.info("Loading credentials from user_data dict")
-        creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), SCOPES)
-    
-    # ... otherwise try to open `token_file`
-    elif token_file is not None and pathlib.Path(token_file).exists():
-        logger.info("Loading credentials from JSON file")
-        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+    if not first_login:
+        # Look up credentials in `user_data` dictionary ...
+        if user_data is not None and 'creds' in user_data:
+            logger.info("Loading credentials from user_data dict")
+            creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), SCOPES)
+        # ... otherwise try to open `token_file`
+        elif token_file is not None and pathlib.Path(token_file).exists():
+            logger.info("Loading credentials from JSON file")
+            creds = Credentials.from_authorized_user_file(token_file, SCOPES)
 
     if creds is not None:
         result = 'Credentials loaded from user data or a valid file\.'
@@ -215,17 +210,19 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     spreadsheet_data = user_data.get('spreadsheet')
     
     if not records:
-        logger.info(f"Skipping scheduled task for user_id {user_id}: records is empty.")
+        logger.info(f"Skipping scheduled task for user_id {user_id}: no records.")
         context.bot.send_message(user_id, "You have no records to append\.", disable_notification=True)
         return None
 
     # Check auth and whether a spreadsheet has been set
     if not check_auth(auth_data):
         logger.warning(f"Cannot add data to spreadsheet of user {user_id}: authorization is incomplete.")
+        context.bot.send_message(user_id, "⚠️ I could not add your data to the spreadsheet: *authorization is incomplete*\. Enter the `/settings` to log in\.")
         return None
 
     if not check_spreadsheet(spreadsheet_data):
         logger.warning(f"Cannot add data to spreadsheet of user {user_id}: spreadsheet has not been set or is invalid.")
+        context.bot.send_message(user_id, "⚠️ I could not add your data to the spreadsheet: ID or sheet name *are not set*\. Enter the `/settings` to set them\.")
         return None
     
     # Add data to the spreadsheet
