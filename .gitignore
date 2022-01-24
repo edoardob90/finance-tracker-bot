@@ -9,3 +9,4 @@ gs_test.py
 scratch.*
 .python_version
 .python-version
+example*.py
