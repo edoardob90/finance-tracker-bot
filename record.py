@@ -2,13 +2,9 @@
 Bot functions for the `/record` command
 """
 import logging
-from pydoc import text
-import re
-from tracemalloc import stop
 from typing import OrderedDict
 from copy import deepcopy
 import datetime as dtm
-from random import randrange
 
 from telegram import (
     Update,
@@ -235,7 +231,6 @@ You must use commas \(`,`\) *only* to separate the fields\.""",
 
 def quick_save(update: Update, context: CallbackContext) -> str:
     """Quick-save a new record written on a single line. Fields must be comma-separated"""
-    # match = re.match(r'^!\s*(.*)', update.message.text)
     record_data = [x.strip() for x in update.message.text.split(',')]
     
     # Fill in the new record with the input data

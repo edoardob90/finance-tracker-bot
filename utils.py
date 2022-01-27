@@ -6,7 +6,7 @@ import json
 import logging
 import pathlib
 from functools import partial
-from typing import List, Tuple, Union, Dict, Any
+from typing import Tuple, Union, Dict, Any
 import datetime as dtm
 from dateutil.parser import parse
 
@@ -60,7 +60,7 @@ def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
 #
 def data_to_str(data: Dict[str, Any]) -> str:
     """Build a string concatenating all values in a data `Dict`"""
-    facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items()]
+    facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items() if key != 'recorded_on']
     
     return "\n".join(facts)
 
@@ -243,7 +243,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     else:
         context.bot.send_message(
             user_id,
-            text=f"On {dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}, *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
+            text=f"{dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}: *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
             disable_notification=True
         )
         records.clear()

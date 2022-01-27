@@ -19,6 +19,7 @@ from telegram.ext import (
     Defaults,
 )
 from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
+from ptbcontrib.postgres_persistence import PostgresPersistence
 
 from constants import *
 import record
@@ -119,10 +120,17 @@ def main() -> None:
     DB_URI = f'postgresql://{DB_USER}:{DB_PASS}@localhost:5432/{DB_NAME}'
 
     # Setup the persistence class
-    persistence = PicklePersistence(filename=os.path.join(DATA_DIR, 'finance_tracker'),
-                                    single_file=False,
-                                    store_chat_data=False,
-                                    store_bot_data=False)
+    persistence = PostgresPersistence(
+        url=DB_URI,
+        store_chat_data=False,
+        store_bot_data=False
+    )
+    # persistence = PicklePersistence(
+    #   filename=os.path.join(DATA_DIR, 'finance_tracker'),
+    #   single_file=False,
+    #   store_chat_data=False,
+    #   store_bot_data=False
+    # )
 
     # Bot's defaults
     defaults = Defaults(parse_mode=ParseMode.MARKDOWN_V2, tzinfo=pytz.timezone('Europe/Rome'))
