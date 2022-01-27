@@ -204,7 +204,9 @@ def check_spreadsheet(spreadsheet_data: Dict = None) -> bool:
 
 def add_to_spreadsheet(context: CallbackContext) -> None:
     """Task for `telegram.ext.JobQueue` to add records saved locally to the spreadsheet"""
-    user_id, user_data = context.job.context
+    user_id = context.job.context
+    user_data = context.dispatcher.user_data[user_id]
+    
     records = user_data.get('records')
     auth_data = user_data.get('auth')
     spreadsheet_data = user_data.get('spreadsheet')

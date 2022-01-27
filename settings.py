@@ -326,8 +326,12 @@ def set_default_schedule(update: Update, context: CallbackContext) -> str:
     context.job_queue.run_daily(
         utils.add_to_spreadsheet,
         time=dtm.time(23, 59, randrange(0, 60)),
-        context=(user_id, context.user_data),
-        name='append_data_' + str(user_id)
+        context=user_id,
+        name='append_data_' + str(user_id),
+        job_kwargs={
+            'id': str(user_id),
+            'replace_existing': True,
+        }
     )
 
     query.edit_message_text("Okay, I will add your data to the spreadsheet *every day at 23:59*\.\nBye 👋")
@@ -364,6 +368,10 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     user_id = update.message.from_user.id
     job_name = f'append_data_{user_id}'
     job_when = None
+    job_kwargs = {
+        'id': str(user_id),
+        'replace_existing': True,
+    }
     
     # Remove any previous job, if any
     utils.remove_job_if_exists(job_name, context)
@@ -390,8 +398,9 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
         context.job_queue.run_once(
                 utils.add_to_spreadsheet,
                 when=job_when,
-                context=(user_id, context.user_data),
-                name=job_name
+                context=user_id,
+                name=job_name,
+                job_kwargs=job_kwargs
             )
     # Try the 'daily' or 'monthly' time specs
     elif ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
@@ -402,16 +411,18 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 utils.add_to_spreadsheet,
                 when=dtm.time(**job_when),
                 day=day,
-                context=(user_id, context.user_data),
-                name=job_name
+                context=user_id,
+                name=job_name,
+                job_kwargs=job_kwargs
             )
             when = f"on *{day}* every month at *{job_when['hour']}:{job_when['minute']}*"
         else:
             context.job_queue.run_daily(
                 utils.add_to_spreadsheet,
                 when=dtm.time(**job_when),
-                context=(user_id, context.user_data),
-                name=job_name
+                context=user_id,
+                name=job_name,
+                job_kwargs=job_kwargs
             )
             when = f"every day at *{job_when['hour']}:{job_when['minute']}*"
     

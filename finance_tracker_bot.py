@@ -11,7 +11,6 @@ from telegram import (
     Update,
     ParseMode,
 )
-
 from telegram.ext import (
     Updater,
     CommandHandler,
@@ -19,6 +18,7 @@ from telegram.ext import (
     PicklePersistence,
     Defaults,
 )
+from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
 
 from constants import *
 import record
@@ -112,6 +112,12 @@ def main() -> None:
     if not TOKEN:
         raise RuntimeError('Telegram bot token is required!')
 
+    # Set up the Postgres DB
+    DB_NAME = os.environ.get('DB_NAME')
+    DB_USER = os.environ.get('DB_USER')
+    DB_PASS = os.environ.get('DB_PASS')
+    DB_URI = f'postgresql://{DB_USER}:{DB_PASS}@localhost:5432/{DB_NAME}'
+
     # Setup the persistence class
     persistence = PicklePersistence(filename=os.path.join(DATA_DIR, 'finance_tracker'),
                                     single_file=False,
@@ -126,6 +132,10 @@ def main() -> None:
     
     # Get a dispatcher to register handlers
     dispatcher = updater.dispatcher
+    # Add the Postgres jobstore
+    dispatcher.job_queue.scheduler.add_jobstore(
+        PTBSQLAlchemyJobStore(dispatcher=dispatcher, url=DB_URI)
+    )
 
     # A couple of helpers handlers
     start_ = CommandHandler('start', start)
