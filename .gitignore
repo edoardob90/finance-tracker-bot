@@ -6,6 +6,7 @@ venv
 *.code-workspace
 *_data
 gs_test.py
-scratch.txt
+scratch.*
 .python_version
 .python-version
+example*.py

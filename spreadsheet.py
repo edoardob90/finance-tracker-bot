@@ -63,8 +63,8 @@ class Spreadsheet():
     def sheet(self) -> Worksheet:
         try:
             sheet = self.doc.worksheet(self.sheet_name)
-        except (APIError, WorksheetNotFound):
-            raise SpreadsheetError("A sheet with name '{}' does not exist!".format(self.sheet_name))
+        except (APIError, WorksheetNotFound) as err:
+            raise SpreadsheetError("A sheet with name '{}' does not exist!\nError: {}".format(self.sheet_name, err))
         
         self._sheet = sheet
         
@@ -87,7 +87,7 @@ class Spreadsheet():
         """Append one or more records to the spreadhseet"""
         return self.sheet.append_rows(values, value_input_option="USER_ENTERED", table_range=self.range)
 
-    def get_records(self, sheet_name: str = None, range_: str = None, as_dict: bool = False, **kwargs) -> List | List[Dict]:
+    def get_records(self, sheet_name: str = None, range_: str = None, as_dict: bool = False, **kwargs) -> Union[List, List[Dict]]:
         """Get records from a range (A1 notation) or an entire sheet"""
         # If `sheet` is not given, check if it's already been set
         if sheet_name:

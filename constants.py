@@ -4,18 +4,13 @@ Constants
 import os
 from os.path import join, dirname, exists
 from dotenv import load_dotenv
+from telegram.ext import ConversationHandler
 
 load_dotenv()
 
 # Logging
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 log_level = os.environ.get("LOG_LEVEL", "INFO")
-
-# The three conversation states:
-# CHOOSING = 0
-# CHOICE = 1
-# REPLY = 2
-CHOOSING, CHOICE, REPLY = range(3)
 
 # Currencies supported
 CURRENCIES = dict(
@@ -44,3 +39,6 @@ MODE = os.environ.get("MODE", "polling")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", None)
 PORT = int(os.environ.get("PORT", "5000"))
 LISTEN_URL = os.environ.get("LISTEN_URL", "127.0.0.1")
+
+# Shortcut to end a conversation
+END = ConversationHandler.END
