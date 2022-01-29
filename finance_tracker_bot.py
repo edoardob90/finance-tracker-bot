@@ -113,10 +113,12 @@ def main() -> None:
     if not TOKEN:
         raise RuntimeError('Telegram bot token is required!')
 
-    # Set up the Postgres DB
+    # Set up the connection with the Postgres database
     DB_NAME = os.environ.get('DB_NAME')
     DB_USER = os.environ.get('DB_USER')
     DB_PASS = os.environ.get('DB_PASS')
+    if not (DB_NAME and DB_USER and DB_PASS):
+        raise RuntimeError("Either 'DB_NAME', 'DB_PASS', or 'DB_USER' are missing!")
     DB_URI = f'postgresql://{DB_USER}:{DB_PASS}@localhost:5432/{DB_NAME}'
 
     # Setup the persistence class
