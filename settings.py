@@ -78,7 +78,7 @@ entry_inline_kb = [
 # Login keyboard
 edit_login_inline_kb = [
     [
-       InlineKeyboardButton(text='Reset login', callback_data=str(RESET)),
+       InlineKeyboardButton(text='Logout', callback_data=str(RESET)),
        InlineKeyboardButton(text='Login status', callback_data=str(SHOW)) 
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
