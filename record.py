@@ -188,19 +188,20 @@ def save(update: Update, context: CallbackContext) -> str:
     if 'choice' in record:
         del record['choice']
 
-    # Warn the user when trying to save an empty record
-    if not record:
+    # Warn the user when trying to save an empty or invalid record
+    # 'reason' and 'amount' are compulsory, the other fields are optional
+    if not record or ('amount' not in record and 'reason' not in record):
         query.edit_message_text(
-            "The new record is empty, I don't know what to save 🤔\. Try again or cancel\.",
+            "The new record is empty or incomplete 🤔\. You must tell me at least the *reason* and the *amount*\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
         return INPUT
 
     # Append the current record
+    if 'date' not in record:
+        record['date'] = '-'
     record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-    
-    # Using deepcopy() because record is a dictionary (i.e., mutable object)
-    records.append(deepcopy(record))
+    records.append(deepcopy(record)) # copy.deepcopy() is required because record is a dictionary
 
     query.edit_message_text(
         f"This is the record just saved:\n\n{utils.data_to_str(record)}",
