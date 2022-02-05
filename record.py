@@ -2,7 +2,7 @@
 Bot functions for the `/record` command
 """
 import logging
-from typing import OrderedDict
+from collections import OrderedDict
 from copy import deepcopy
 import datetime as dtm
 
@@ -201,11 +201,14 @@ def save(update: Update, context: CallbackContext) -> str:
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
     else:
+        # Add a date placeholder if key's empty
+        # 'date' field must be the first
         if 'date' not in record:
-            record['date'] = '-'
-        
+            record = OrderedDict({'date': '-', **record})
+
+        # Add timestamp 
         record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-        
+
         # Append the current record
         # copy.deepcopy() is required because record is a dictionary
         records.append(deepcopy(record)) 
