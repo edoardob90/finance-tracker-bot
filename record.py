@@ -190,29 +190,36 @@ def save(update: Update, context: CallbackContext) -> str:
 
     # Warn the user when trying to save an empty or invalid record
     # 'reason' and 'amount' are compulsory, the other fields are optional
-    if not record or ('amount' not in record and 'reason' not in record):
+    if not record:
         query.edit_message_text(
-            "The new record is empty or incomplete 🤔\. You must tell me at least the *reason* and the *amount*\. Try again or cancel\.",
+            "The new record is empty 🤔\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
-        return INPUT
+    elif 'amount' not in record or 'reason' not in record:
+        query.edit_message_text(
+            "The new record is *incomplete*\. You must tell me at least the *reason* and the *amount*\. Try again or cancel\.",
+            reply_markup=InlineKeyboardMarkup(record_inline_kb)
+        )
+    else:
+        if 'date' not in record:
+            record['date'] = '-'
+        
+        record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
+        
+        # Append the current record
+        # copy.deepcopy() is required because record is a dictionary
+        records.append(deepcopy(record)) 
 
-    # Append the current record
-    if 'date' not in record:
-        record['date'] = '-'
-    record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-    records.append(deepcopy(record)) # copy.deepcopy() is required because record is a dictionary
-
-    query.edit_message_text(
-        f"This is the record just saved:\n\n{utils.data_to_str(record)}",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
-    )
-    
-    # Reset the current record to an empty record
-    # TODO: this will erase *EVERYTHING* from the dictionary, keys included. Maybe retain the keys?
-    record.clear()
-    
-    logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
+        query.edit_message_text(
+            f"This is the record just saved:\n\n{utils.data_to_str(record)}",
+            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+        )
+        
+        # Reset the current record to an empty record
+        # TODO: this will erase *EVERYTHING* from the dictionary, keys included. Maybe retain the keys?
+        record.clear()
+        
+        logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
     return INPUT
 
