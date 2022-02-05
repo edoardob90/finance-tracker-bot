@@ -225,7 +225,7 @@ def quick_input(update: Update, _: CallbackContext) -> str:
 <date>, <reason>, <amount>, <account>
 ```
 You must use commas \(`,`\) *only* to separate the fields\.""",
-    reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
     )
     return QUICK_INPUT
 

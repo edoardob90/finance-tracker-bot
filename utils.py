@@ -105,38 +105,43 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
     creds = None
     result = None
 
-    logger.info(f'Current auth data: {user_data}')
+    logger.debug(f'Current auth data: {user_data}')
 
     if not first_login:
         # Look up credentials in `user_data` dictionary ...
         if user_data is not None and 'creds' in user_data:
-            logger.info("Loading credentials from user_data dict")
+            logger.debug("Loading credentials from user_data dict")
             creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), SCOPES)
         # ... otherwise try to open `token_file`
         elif token_file is not None and pathlib.Path(token_file).exists():
-            logger.info("Loading credentials from JSON file")
+            logger.debug("Loading credentials from JSON file")
             creds = Credentials.from_authorized_user_file(token_file, SCOPES)
 
     if creds is not None:
         result = 'Credentials loaded from user data or a valid file\.'
 
     if not creds or not creds.valid:
-        logger.info("Creds are invalid")
+        logger.debug("Credentials don't have a token or the token is expired")
         if creds and creds.expired and creds.refresh_token:
-            logger.info("Creds are expired")
+            logger.debug("Credentials are expired")
             try:
                 creds.refresh(Request())
-            except (UserAccessTokenError, RefreshError) as err:
-                raise AuthError("Error while attempting to refresh the token: {}".format(err))
+            except (UserAccessTokenError, RefreshError):
+                logger.error("Error while attempting to refresh the token")
+                raise
         else:
-            logger.info("New login: starting a new OAuth flow")
-            flow = Flow.from_client_secrets_file(
-                credentials_file,
-                scopes=SCOPES,
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+            logger.debug("New login: starting a new OAuth flow")
+            try:
+                flow = Flow.from_client_secrets_file(
+                    credentials_file,
+                    scopes=SCOPES,
+                    redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+            except TypeError:
+                logger.error("Client secret file cannot be 'None'")
+                raise
 
             if code:
-                logger.info("Last OAuth step: fetching the token from the authorization code")
+                logger.debug("Last OAuth step: fetching the token from the authorization code")
                 # We have an authorization code. This code is used to get the
                 # access token.
                 flow.fetch_token(code=code)
@@ -150,12 +155,13 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
 
                 # Store credentials
                 creds_stored = False
-                # in user_data dict ...
+                # in user_data dict
                 if user_data is not None:
                     creds_stored = True
                     user_data['creds'] = creds.to_json()
 
-                # ... and to a JSON file `token_file`
+                # FIXME: is this necessary? should this backup file be removed completely?
+                # and to a JSON file `token_file`
                 if token_file is not None:
                     creds_stored = True
                     user_data['token_file'] = token_file
@@ -165,7 +171,7 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
                 if creds_stored:
                     result = 'Token has been saved\.'
             else:
-                logger.info("OAuth step: asking the user to authorize the app and enter the authorization code")
+                logger.debug("OAuth step: asking the user to authorize the app and enter the authorization code")
                 # Tell the user to go to the authorization URL to get the authorization code
                 auth_url, _ = flow.authorization_url(prompt='consent')
                 result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
