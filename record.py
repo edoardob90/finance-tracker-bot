@@ -201,11 +201,15 @@ def save(update: Update, context: CallbackContext) -> str:
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
     else:
+        # Add a date placeholder if key's empty
         if 'date' not in record:
             record['date'] = '-'
-        
+        # 'date' must be the first key
+        record.move_to_end('date', last=False)
+
+        # Add timestamp 
         record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-        
+
         # Append the current record
         # copy.deepcopy() is required because record is a dictionary
         records.append(deepcopy(record)) 
