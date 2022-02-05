@@ -202,9 +202,16 @@ def save(update: Update, context: CallbackContext) -> str:
         )
     else:
         # Add a date placeholder if key's empty
+<<<<<<< HEAD
         # 'date' field must be the first
         if 'date' not in record:
             record = OrderedDict({'date': '-', **record})
+=======
+        if 'date' not in record:
+            record['date'] = '-'
+        # 'date' must be the first key
+        record.move_to_end('date', last=False)
+>>>>>>> 8fd6c86e72e17d4c6117ae16778ff79c9a05c1d6
 
         # Add timestamp 
         record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
