@@ -172,6 +172,7 @@ def store_auth_code(update: Update, context: CallbackContext) -> int:
     auth_data = context.user_data.get('auth')
     code = update.message.text
     creds, result = utils.oauth(
+        first_login=True,
         credentials_file=CREDS,
         token_file=auth_data['token_file'],
         user_data=auth_data,
@@ -344,10 +345,12 @@ def prompt_custom_schedule(update: Update, _: CallbackContext) -> str:
     update.callback_query.edit_message_text(
         "Okay, tell me when you want me to append your data to the spreadsheet\. You can use the following time specifications:\n"
         "\- `now`: immediately\n"
-        "\- `SS`: within `SS` seconds from now\n"
+        "\- `SS`: within this many seconds from now\n"
         "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
-        "\- `d\[aily\] HH:MM`: every day at the specified time\n"
-        "\- `m\[onthly\] DD HH:MM`: every month at the specified day \(`DD`\) and time \(`HH:MM`\)\n"
+        "\- `d HH:MM`: every day at the specified time\n"
+        "\- `d D HH:MM`: every week at the specified day and time\. `D=1` corresponds to Monday and `D=7` to Sunday\n"
+        "\- `m DD HH:MM`: every month at the specified day \(`DD`\) and time\n",
+        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
     )
 
     return INPUT
@@ -360,9 +363,10 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
         - `now`: run once almost immediately
         - `SS`: run this many seconds from now
         - `HH:MM`: run once at the specified time
-        - `daily HH:MM`: run daily at the specified time
+        - `daily DD HH:MM`: run daily or weekly at the specified time
         - `monthly DD HH:MM`: run monthly at the specified day `DD` and time
     """
+    WEEKDAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
     schedule_is_valid = False
     when_text = update.message.text
     user_id = update.message.from_user.id
@@ -378,7 +382,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     
     # Parse the new time/date
     once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{2}))')
-    daily_pattern = re.compile(r'(d|daily) (?P<hour>\d{2}):(?P<minute>\d{2})')
+    daily_pattern = re.compile(r'(d|daily)\s*(?P<dow>[1-7])?\s*(?P<hour>\d{2}):(?P<minute>\d{2})')
     monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})')
 
     # Try the first three time specs
@@ -416,6 +420,15 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 job_kwargs=job_kwargs
             )
             when = f"on *{day}* every month at *{job_when['hour']}:{job_when['minute']}*"
+        elif (dow := job_when.pop('dow', None)) is not None:
+            context.job_queue.run_daily(
+                utils.add_to_spreadsheet,
+                days=(dow - 1,),
+                when=dtm.time(**job_when),
+                name=job_name,
+                job_kwargs=job_kwargs
+            )
+            when = f"every *{WEEKDAYS[dow - 1]}* at *{job_when['hour']}:{job_when['minute']}*"
         else:
             context.job_queue.run_daily(
                 utils.add_to_spreadsheet,
