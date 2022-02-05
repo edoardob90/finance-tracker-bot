@@ -350,8 +350,8 @@ def prompt_custom_schedule(update: Update, _: CallbackContext) -> str:
         "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
         "\- `d HH:MM`: every day at the specified time\n"
         "\- `d D HH:MM`: every week at the specified day and time\. `D=1` corresponds to Monday and `D=7` to Sunday\n"
-        "\- `m DD HH:MM`: every month at the specified day \(`DD`\) and time\n",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
+        "\- `m DD HH:MM`: every month at the specified day \(`DD`\) and time\n\n"
+        "Use the command `/cancel` to cancel the operation\."
     )
 
     return INPUT

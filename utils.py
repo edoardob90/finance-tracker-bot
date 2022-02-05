@@ -60,7 +60,7 @@ def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
 #
 def data_to_str(data: Dict[str, Any]) -> str:
     """Build a string concatenating all values in a data `Dict`"""
-    facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items() if key != 'recorded_on']
+    facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items() if (value and key != 'recorded_on')]
     
     return "\n".join(facts)
 

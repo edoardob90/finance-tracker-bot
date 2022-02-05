@@ -135,7 +135,7 @@ f"""\- Currencies supported: '{', '.join(set(CURRENCIES.values()))}'\. You can a
     user_data = context.user_data
     if 'record' not in user_data:
         # a single empty record
-        user_data['record'] = OrderedDict()
+        user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
     # the list of all the records to append
     if 'records' not in user_data:
         user_data['records'] = []
@@ -178,10 +178,11 @@ def store(update: Update, context: CallbackContext) -> str:
 
 def save(update: Update, context: CallbackContext) -> str:
     """Display the final record and append it to the list that will be added to the spreadsheet"""
-    record = context.user_data.get('record')
-    records = context.user_data.get('records')
     query = update.callback_query
     query.answer()
+
+    record = context.user_data.get('record')
+    records = context.user_data.get('records')
 
     logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
@@ -195,16 +196,16 @@ def save(update: Update, context: CallbackContext) -> str:
             "The new record is empty 🤔\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
-    elif 'amount' not in record or 'reason' not in record:
+    elif not record['amount'] or not record['reason']:
         query.edit_message_text(
-            "The new record is *incomplete*\. You must tell me at least the *reason* and the *amount*\. Try again or cancel\.",
+            "The new record is *incomplete*\. You must add at least the *reason* and the *amount*\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
     else:
         # Add a date placeholder if key's empty
         # 'date' field must be the first
-        if 'date' not in record:
-            record = OrderedDict({'date': '-', **record})
+        if not record['date']:
+            record['date'] = '-'
 
         # Add timestamp 
         record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
@@ -219,8 +220,7 @@ def save(update: Update, context: CallbackContext) -> str:
         )
         
         # Reset the current record to an empty record
-        # TODO: this will erase *EVERYTHING* from the dictionary, keys included. Maybe retain the keys?
-        record.clear()
+        context.user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
         
         logger.info(f"user_data: {str(record)}, context.user_data: {str(context.user_data)}")
 
