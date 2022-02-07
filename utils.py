@@ -177,7 +177,11 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
             else:
                 logger.debug("OAuth step: asking the user to authorize the app and enter the authorization code")
                 # Tell the user to go to the authorization URL to get the authorization code
-                auth_url, _ = flow.authorization_url(prompt='consent')
+                auth_url, _ = flow.authorization_url(
+                    prompt='consent',
+                    access_type='offline',
+                    include_granted_scopes='true'
+                )
                 result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
     
     return creds, result
