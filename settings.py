@@ -395,7 +395,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
             when = f'*once* at *{hour}:{minute}*'
         elif seconds:
             job_when = int(seconds)
-            when = f"*in {seconds} second{'s' if job_when > 1 else ''} from now*"
+            when = f"in *{seconds} second{'s' if job_when > 1 else ''}* from now"
         else:
             job_when = dtm.datetime.now() + dtm.timedelta(seconds=0.5)
             when = '*now*'
@@ -410,7 +410,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     # Try the 'daily' or 'monthly' time specs
     elif ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
         schedule_is_valid = True
-        job_when = {key: int(value) for key, value in match.groupdict().items()}
+        job_when = {key: int(value) for key, value in match.groupdict().items() if value}
         if (day := job_when.pop('day', None)) is not None:
             context.job_queue.run_monthly(
                 utils.add_to_spreadsheet,

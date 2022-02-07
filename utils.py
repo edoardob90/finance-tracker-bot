@@ -12,7 +12,7 @@ from dateutil.parser import parse
 
 from telegram import Update
 from telegram.ext import CallbackContext
-from telegram.utils.helpers import escape_markdown
+from telegram.utils.helpers import escape_markdown as EscapeMarkdown
 
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
@@ -30,11 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class AuthError(Exception):
-    """Exception for an authentication error"""
-
 # Partial function with version=2 of Markdown parsing
-escape_markdown = partial(escape_markdown, version=2)
+escape_markdown = partial(EscapeMarkdown, version=2)
 
 def stop(command: str, action: str, update: Update) -> int:
     """End a conversation altogether"""
@@ -112,13 +109,14 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
         if user_data is not None and 'creds' in user_data:
             logger.debug("Loading credentials from user_data dict")
             creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), SCOPES)
-        # ... otherwise try to open `token_file`
+        # Otherwise try to open `token_file`
         elif token_file is not None and pathlib.Path(token_file).exists():
             logger.debug("Loading credentials from JSON file")
             creds = Credentials.from_authorized_user_file(token_file, SCOPES)
 
     if creds is not None:
-        result = 'Credentials loaded from user data or a valid file\.'
+        logger.debug('Credentials loaded from user data or token file')
+        result = 'ok'
 
     if not creds or not creds.valid:
         logger.debug("Credentials don't have a token or the token is expired")
@@ -127,8 +125,11 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
             try:
                 creds.refresh(Request())
             except (UserAccessTokenError, RefreshError):
+                result = 'refresh error'
                 logger.error("Error while attempting to refresh the token")
                 raise
+            else:
+                result = 'ok'
         else:
             logger.debug("New login: starting a new OAuth flow")
             try:
@@ -139,6 +140,9 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
             except TypeError:
                 logger.error("Client secret file cannot be 'None'")
                 raise
+            except FileNotFoundError:
+                logger.error(f"Client secret file '{credentials_file}' not found")
+                raise
 
             if code:
                 logger.debug("Last OAuth step: fetching the token from the authorization code")
@@ -148,20 +152,20 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
                 
                 # Get the credentials
                 try:
-                    creds=flow.credentials
+                    creds = flow.credentials
                 except ValueError:
                     logger.error("No valid token found in session")
-                    raise AuthError("No valid token found in session")
+                    raise
 
                 # Store credentials
                 creds_stored = False
-                # in user_data dict
+                # in the `user_data` dict
                 if user_data is not None:
                     creds_stored = True
                     user_data['creds'] = creds.to_json()
-
+                
+                # as a JSON file at `token_file`
                 # FIXME: is this necessary? should this backup file be removed completely?
-                # and to a JSON file `token_file`
                 if token_file is not None:
                     creds_stored = True
                     user_data['token_file'] = token_file
@@ -212,6 +216,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     """Task for `telegram.ext.JobQueue` to add records saved locally to the spreadsheet"""
     user_id = context.job.context
     user_data = context.dispatcher.user_data[user_id]
+    send_message = partial(context.bot.send_message, chat_id=user_id, disable_notification=True)
     
     records = user_data.get('records')
     auth_data = user_data.get('auth')
@@ -219,22 +224,27 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     
     if not records:
         logger.info(f"Skipping scheduled task for user_id {user_id}: no records.")
-        context.bot.send_message(user_id, "You have no records to append\.", disable_notification=True)
+        send_message(text="You have no records to append\.")
         return None
 
     # Check auth and whether a spreadsheet has been set
     if not check_auth(auth_data):
         logger.warning(f"Cannot add data to spreadsheet of user {user_id}: authorization is incomplete.")
-        context.bot.send_message(user_id, "⚠️ I could not add your data to the spreadsheet: *authorization is incomplete*\. Enter the `/settings` to log in\.")
+        send_message(text="⚠️ I could not add your data to the spreadsheet: *authorization is incomplete*\. Enter the `/settings` to log in\.")
         return None
 
     if not check_spreadsheet(spreadsheet_data):
         logger.warning(f"Cannot add data to spreadsheet of user {user_id}: spreadsheet has not been set or is invalid.")
-        context.bot.send_message(user_id, "⚠️ I could not add your data to the spreadsheet: ID or sheet name *are not set*\. Enter the `/settings` to set them\.")
+        send_message(text="⚠️ I could not add your data to the spreadsheet: ID or sheet name *are not set*\. Enter the `/settings` to set them\.")
+        return None
+    
+    # Fetch the credentials and check that there are no errors
+    creds, result = oauth(user_data=auth_data)
+    if result == 'refresh error':
+        send_message(text="⚠️ Error while refreshing your credentials\. You should logout and login again\. Go to `/settings`, then *Login*, and then click *Logout*\.")
         return None
     
     # Add data to the spreadsheet
-    creds, _ = oauth(user_data=auth_data)
     spreadsheet = Spreadsheet(
         client=Client(auth=creds),
         spreadsheet_id=spreadsheet_data['id'],
@@ -244,13 +254,11 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
         values = [list(record.values()) for record in records]
         spreadsheet.append_records(values)
     except SpreadsheetError:
-        context.bot.send_message(user_id, text="⚠️ Something went wrong while adding records to the spreadsheet\.")
+        send_message(text="⚠️ An error occurred while adding records to the spreadsheet\.")
         raise
     else:
-        context.bot.send_message(
-            user_id,
-            text=f"{dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}: *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\.",
-            disable_notification=True
+        send_message(
+            text=f"{dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}: *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\."
         )
         records.clear()
 
