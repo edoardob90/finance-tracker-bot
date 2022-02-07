@@ -7,7 +7,6 @@ import logging
 import re
 import datetime as dtm
 from random import randrange
-from time import time
 
 from telegram import (
     Update,
@@ -391,8 +390,9 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
         schedule_is_valid = True
         hour, minute, seconds = match.groupdict().values()
         if hour and minute:
-            job_when = dtm.time(hour=int(hour), minute=int(minute))
-            when = f'*once* at *{hour}:{minute}*'
+            hour, minute = int(hour), int(minute)
+            job_when = dtm.time(hour, minute)
+            when = f'*once* at *{hour:02d}:{minute:02d}*'
         elif seconds:
             job_when = int(seconds)
             when = f"in *{seconds} second{'s' if job_when > 1 else ''}* from now"
@@ -420,7 +420,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 name=job_name,
                 job_kwargs=job_kwargs
             )
-            when = f"on *{day}* every month at *{job_when['hour']}:{job_when['minute']}*"
+            when = f"on *{day}* every month at *{job_when['hour']:02d}:{job_when['minute']:02d}*"
         elif (dow := job_when.pop('dow', None)) is not None:
             context.job_queue.run_daily(
                 utils.add_to_spreadsheet,
@@ -429,7 +429,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 name=job_name,
                 job_kwargs=job_kwargs
             )
-            when = f"every *{WEEKDAYS[dow - 1]}* at *{job_when['hour']}:{job_when['minute']}*"
+            when = f"every *{WEEKDAYS[dow - 1]}* at *{job_when['hour']:02d}:{job_when['minute']:02d}*"
         else:
             context.job_queue.run_daily(
                 utils.add_to_spreadsheet,
@@ -438,7 +438,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 name=job_name,
                 job_kwargs=job_kwargs
             )
-            when = f"every day at *{job_when['hour']}:{job_when['minute']}*"
+            when = f"every day at *{job_when['hour']:02d}:{job_when['minute']:02d}*"
     
     if schedule_is_valid:
         update.message.reply_text(f"Your data will be appended {when}\.\nBye 👋")
