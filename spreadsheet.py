@@ -13,20 +13,24 @@ class SpreadsheetError(Exception):
 
 class Spreadsheet():
     """A class for a Google Spreasheet object"""
-    def __init__(self, client, spreadsheet_id=None, sheet_name=None):
+    def __init__(self, client: Client, spreadsheet_id: str = None, sheet_name: str = None):
         # A valid gspread Client
-        self._client: Client = client
+        self._client = client
+        
         # Properties
-        self._spreadsheet_id: str = spreadsheet_id # the spreadsheet ID
-        self._sheet_name: str = sheet_name # the sheet name
-        self._doc: Document = None
-        self._sheet: Worksheet = None
-        self._range: str = None # the table range
+        self._spreadsheet_id = None # the spreadsheet ID
+        self._sheet_name = None # the sheet name
+        self._doc = None
+        self._sheet = None
+        self._range = None # the table range
+
+        self.spreadsheet_id = spreadsheet_id
+        self.sheet_name = sheet_name
 
     # Properties with accessors
     @property
     def spreadsheet_id(self) -> str:
-        """The spreadsheet ID"""
+        """Returns the spreadsheet ID"""
         return self._spreadsheet_id
     
     @spreadsheet_id.setter
@@ -35,6 +39,7 @@ class Spreadsheet():
 
     @property
     def sheet_name(self) -> str:
+        """Returns the sheet (a.k.a. worksheet) name"""
         return self._sheet_name
 
     @sheet_name.setter
@@ -43,31 +48,32 @@ class Spreadsheet():
 
     @property
     def doc(self) -> Document:
+        """Returns the spreadsheet document object"""
         if not self.spreadsheet_id:
-            raise SpreadsheetError('Spreadsheet ID is undefined!')
-
+            raise SpreadsheetError('Spreadsheet ID is undefined.')
         try:
             doc = self._client.open_by_key(self.spreadsheet_id)
         except APIError:
             raise SpreadsheetError("A spreadsheet with ID '{}' was not found.".format(self.spreadsheet_id))
-
-        self._doc = doc
-
+        else:
+            self._doc = doc
         return self._doc
     
     @doc.setter
-    def doc(self, id_: str = None) -> NoReturn:
+    def doc(self, _) -> NoReturn:
         raise SpreadsheetError('Spreadsheet document should only be set by providing the spreadsheet ID.')
 
     @property
     def sheet(self) -> Worksheet:
+        """Returns a single sheet object"""
         try:
             sheet = self.doc.worksheet(self.sheet_name)
-        except (APIError, WorksheetNotFound) as err:
-            raise SpreadsheetError("A sheet with name '{}' does not exist!\nError: {}".format(self.sheet_name, err))
-        
-        self._sheet = sheet
-        
+        except WorksheetNotFound:
+            raise SpreadsheetError("A sheet with name '{}' does not exist".format(self.sheet_name))
+        except SpreadsheetError:
+            raise
+        else:
+            self._sheet = sheet
         return self._sheet
 
     @sheet.setter

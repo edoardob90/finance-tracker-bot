@@ -5,12 +5,14 @@ import re
 import json
 import logging
 import pathlib
+import traceback
+import html
+import json
 from functools import partial
 from typing import Tuple, Union, Dict, Any
-import datetime as dtm
-from dateutil.parser import parse
+from dateutil.parser import parse, ParserError
 
-from telegram import Update
+from telegram import Update, ParseMode
 from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown as EscapeMarkdown
 
@@ -51,6 +53,37 @@ def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
     for job in current_jobs:
         job.schedule_removal()
     return True
+
+# Error handler
+def error_handler(update: Update, context: CallbackContext) -> None:
+    """Log any error and send a warning message"""
+    developer_user_id = os.environ.get('DEVELOPER_USER_ID')
+
+    # First, log the error before doing anything else so we can see it in the logfile
+    logger.error(msg="Exception raised while processing an update:", exc_info=context.error)
+
+    # Format the traceback
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = ''.join(tb_list)
+    update_str = update.to_dict() if isinstance(update, Update) else str(update)
+    message = (
+        f'An exception was raised while handling an update\n'
+        f'<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}'
+        '</pre>\n\n'
+        f'<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n'
+        f'<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n'
+        f'<pre>{html.escape(tb_string)}</pre>'
+    )
+
+    # Which kind of error?
+    if isinstance(context.error, ParserError):
+        update.message.reply_text("You entered an invalid date\. Try again\.")
+    
+    # Notify the developer about the exception
+    if developer_user_id:
+        context.bot.send_message(chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML)
+
+    return None
 
 #
 # Record
@@ -125,7 +158,7 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
             try:
                 creds.refresh(Request())
             except (UserAccessTokenError, RefreshError):
-                result = 'refresh error'
+                result = 'error'
                 logger.error("Error while attempting to refresh the token")
                 raise
             else:
@@ -138,9 +171,11 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
                     scopes=SCOPES,
                     redirect_uri='urn:ietf:wg:oauth:2.0:oob')
             except TypeError:
+                result = 'error'
                 logger.error("Client secret file cannot be 'None'")
                 raise
             except FileNotFoundError:
+                result = 'error'
                 logger.error(f"Client secret file '{credentials_file}' not found")
                 raise
 
@@ -218,9 +253,11 @@ def check_spreadsheet(spreadsheet_data: Dict = None) -> bool:
 
 def add_to_spreadsheet(context: CallbackContext) -> None:
     """Task for `telegram.ext.JobQueue` to add records saved locally to the spreadsheet"""
-    user_id = context.job.context
+    user_id, recurring = context.job.context
     user_data = context.dispatcher.user_data[user_id]
     send_message = partial(context.bot.send_message, chat_id=user_id, disable_notification=True)
+
+    msg_header = f"📆{'🔁' if recurring else ''} Running scheduled task:"
     
     records = user_data.get('records')
     auth_data = user_data.get('auth')
@@ -228,7 +265,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     
     if not records:
         logger.info(f"Skipping scheduled task for user_id {user_id}: no records.")
-        send_message(text="You have no records to append\.")
+        send_message(text=f"{msg_header}\nThere are no records to append\.")
         return None
 
     # Check auth and whether a spreadsheet has been set
@@ -243,17 +280,20 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
         return None
     
     # Fetch the credentials and check that there are no errors
-    creds, result = oauth(user_data=auth_data)
-    if result == 'refresh error':
+    try:
+        creds, _ = oauth(user_data=auth_data)
+    except RefreshError:
         send_message(text="⚠️ Error while refreshing your credentials\. You should logout and login again\. Go to `/settings`, then *Login*, and then click *Logout*\.")
         return None
-    
-    # Add data to the spreadsheet
-    spreadsheet = Spreadsheet(
-        client=Client(auth=creds),
-        spreadsheet_id=spreadsheet_data['id'],
-        sheet_name=spreadsheet_data['sheet_name']
-    )
+    else:
+        # Open the spreadsheet
+        spreadsheet = Spreadsheet(
+            client=Client(auth=creds),
+            spreadsheet_id=spreadsheet_data['id'],
+            sheet_name=spreadsheet_data['sheet_name']
+        )
+
+    # Add the records to the spreadsheet
     try:
         values = [list(record.values()) for record in records]
         spreadsheet.append_records(values)
@@ -262,7 +302,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
         raise
     else:
         send_message(
-            text=f"{dtm.datetime.now().strftime('%d/%m/%Y, %H:%M')}: *{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\."
+            text=f"{msg_header}\n*{len(records)}* record{' has' if len(records) == 1 else 's have'} been successfully added to the spreadsheet\."
         )
         records.clear()
 

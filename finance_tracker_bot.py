@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 # pylint: disable=C0116,W0613
 import os
-import traceback
-import html
-import json
 import logging
 import pytz
-from dateutil.parser import ParserError
 from telegram import (
     Update,
     ParseMode,
@@ -15,13 +11,13 @@ from telegram.ext import (
     Updater,
     CommandHandler,
     CallbackContext,
-    PicklePersistence,
     Defaults,
 )
 from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
 from ptbcontrib.postgres_persistence import PostgresPersistence
 
 from constants import *
+import utils
 import record
 import settings
 
@@ -31,43 +27,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Helpers functions
-def error_handler(update: Update, context: CallbackContext) -> None:
-    """Log any error and send a warning message"""
-    # FIXME: this MUST NOT BE hard-coded!
-    developer_user_id = os.environ.get('DEVELOPER_USER_ID')
-
-    # First, log the error before doing anything else so we can see it in the logfile
-    logger.error(msg="Exception raised while processing an update:", exc_info=context.error)
-
-    # Format the traceback
-    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
-    tb_string = ''.join(tb_list)
-    update_str = update.to_dict() if isinstance(update, Update) else str(update)
-    message = (
-        f'An exception was raised while handling an update\n'
-        f'<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}'
-        '</pre>\n\n'
-        f'<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n'
-        f'<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n'
-        f'<pre>{html.escape(tb_string)}</pre>'
-    )
-
-    # Which kind of error?
-    if isinstance(context.error, ParserError):
-        update.message.reply_text("You entered an invalid date\. Try again\.")
-    
-    if developer_user_id:
-        context.bot.send_message(chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML)
-
-    return None
-
 def start(update: Update, context: CallbackContext) -> None:
     """Start the bot"""
     context.user_data['start_over'] = False
     
     user_name = update.message.from_user.first_name
-    update.message.reply_markdown_v2(
+    update.message.reply_text(
         f"""Hello {user_name}\! I'm a bot that can help you with you personal finances\. This is what I can do for you:
 
 \- `/record`: record a new expense or income to your Finance Tracker spreadsheet
@@ -90,7 +55,7 @@ def print_help(update: Update, _: CallbackContext) -> None:
     /cancel - Cancel the current command
     /stop - Stop the bot altogether
     """
-    update.message.reply_markdown_v2("""*Supported commands:*
+    update.message.reply_text("""*Supported commands:*
 
 \- `/start`: start the bot
 
@@ -106,7 +71,7 @@ def print_help(update: Update, _: CallbackContext) -> None:
 """)
 
 def main() -> None:
-    """Create and run the bot with a polling mechanism"""
+    """Create and run the bot"""
     
     # Bot's token
     TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -163,7 +128,7 @@ def main() -> None:
     # TODO: to be implemented
     
     # Error handler
-    dispatcher.add_error_handler(error_handler)
+    dispatcher.add_error_handler(utils.error_handler)
 
     # Run the bot
     if MODE == "webhook" and WEBHOOK_URL:
@@ -174,7 +139,7 @@ def main() -> None:
             webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
         )
     else:
-        updater.start_polling(poll_interval=1.0)
+        updater.start_polling(poll_interval=0.5)
     
     updater.idle()
 

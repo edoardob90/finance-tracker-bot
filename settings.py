@@ -1,6 +1,5 @@
 """
-Bot functions for `/auth` command.
-They handle Google authorization flow and Google sheet setup.
+Bot functions for `/settings` command.
 """
 import pathlib
 import logging
@@ -367,6 +366,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
         - `monthly DD HH:MM`: run monthly at the specified day `DD` and time
     """
     WEEKDAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+    recurring = False
     schedule_is_valid = False
     when_text = update.message.text
     user_id = update.message.from_user.id
@@ -381,12 +381,13 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     utils.remove_job_if_exists(job_name, context)
     
     # Parse the new time/date
-    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{2}))')
-    daily_pattern = re.compile(r'(d|daily)\s*(?P<dow>[1-7])?\s*(?P<hour>\d{2}):(?P<minute>\d{2})')
-    monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})')
+    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{2}))', re.IGNORECASE)
+    daily_pattern = re.compile(r'(d|daily)\s*(?P<dow>[1-7])?\s*(?P<hour>\d{2}):(?P<minute>\d{2})', re.IGNORECASE)
+    monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})', re.IGNORECASE)
 
-    # Try the first three time specs
+    # Try the the 'once' pattern (non-recurring task)
     if ( match := once_pattern.match(when_text) ) is not None:
+        recurring = False
         schedule_is_valid = True
         hour, minute, seconds = match.groupdict().values()
         if hour and minute:
@@ -403,20 +404,21 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
         context.job_queue.run_once(
                 utils.add_to_spreadsheet,
                 when=job_when,
-                context=user_id,
+                context=(user_id, recurring),
                 name=job_name,
                 job_kwargs=job_kwargs
             )
     # Try the 'daily' or 'monthly' time specs
     elif ( match := (daily_pattern.match(when_text) or monthly_pattern.match(when_text)) ) is not None:
         schedule_is_valid = True
+        recurring = True
         job_when = {key: int(value) for key, value in match.groupdict().items() if value}
         if (day := job_when.pop('day', None)) is not None:
             context.job_queue.run_monthly(
                 utils.add_to_spreadsheet,
                 when=dtm.time(**job_when),
                 day=day,
-                context=user_id,
+                context=(user_id, recurring),
                 name=job_name,
                 job_kwargs=job_kwargs
             )
@@ -426,6 +428,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
                 utils.add_to_spreadsheet,
                 days=(dow - 1,),
                 time=dtm.time(**job_when),
+                context=(user_id, recurring),
                 name=job_name,
                 job_kwargs=job_kwargs
             )
@@ -434,7 +437,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
             context.job_queue.run_daily(
                 utils.add_to_spreadsheet,
                 time=dtm.time(**job_when),
-                context=user_id,
+                context=(user_id, recurring),
                 name=job_name,
                 job_kwargs=job_kwargs
             )
@@ -479,12 +482,12 @@ def remove_schedule(update: Update, context: CallbackContext) -> str:
 #
 def cancel(update: Update, _: CallbackContext) -> str:
     """Cancel the `settings` command"""
-    text = "Use `/settings` to enter the settings or `/help` to know what I can do for you\.\nBye 👋"
-    if update.callback_query:
-        update.callback_query.answer()
-        update.callback_query.edit_message_text(text=text)
+    text = "Action cancelled\. Use `/settings` to enter the settings or `/help` to know what I can do for you\.\nBye 👋"
+    if (query := update.callback_query) is not None:
+        query.answer()
+        query.edit_message_text(text)
     else:
-        update.message.reply_text(text=text)
+        update.message.reply_text(text)
     return STOPPING
 
 def stop(update: Update, _: CallbackContext) -> int:

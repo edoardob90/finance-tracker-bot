@@ -314,8 +314,12 @@ def cancel(update: Update, context: CallbackContext) -> str:
     record = context.user_data.get('record')
     if record:
         record.clear()
-    update.callback_query.answer()
-    update.callback_query.edit_message_text("Use `/record` to start again or `/help` to know what I can do\.\nBye 👋")
+    msg = "Action cancelled\. Use `/record` to start again or `/help` to know what I can do\.\nBye 👋"
+    if (query := update.callback_query) is not None:
+        query.answer()
+        query.edit_message_text(msg)
+    else:
+        update.message.reply_text(msg)
     return STOPPING
 
 def stop(update: Update, _: CallbackContext) -> int:
