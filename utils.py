@@ -257,7 +257,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     user_data = context.dispatcher.user_data[user_id]
     send_message = partial(context.bot.send_message, chat_id=user_id, disable_notification=True)
 
-    msg_header = f"📆{'🔁' if recurring else ''} Running scheduled task:"
+    msg_header = f"📆{'🔁' if recurring else ''} *Running scheduled task*"
     
     records = user_data.get('records')
     auth_data = user_data.get('auth')

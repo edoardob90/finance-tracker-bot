@@ -317,7 +317,7 @@ def start_schedule(update: Update, context: CallbackContext) -> str:
     return SET_SCHEDULE
 
 def set_default_schedule(update: Update, context: CallbackContext) -> str:
-    """Set the default schedule"""
+    """Set the default schedule: every day at midnight"""
     query = update.callback_query
     query.answer()
 
@@ -326,7 +326,7 @@ def set_default_schedule(update: Update, context: CallbackContext) -> str:
     context.job_queue.run_daily(
         utils.add_to_spreadsheet,
         time=dtm.time(23, 59, randrange(0, 60)),
-        context=user_id,
+        context=(user_id, True),
         name='append_data_' + str(user_id),
         job_kwargs={
             'id': str(user_id),
