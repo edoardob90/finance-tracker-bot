@@ -1,27 +1,20 @@
 """
 Bot functions for the `/record` command
 """
+import datetime as dtm
+import enum
 import logging
+import re
 from collections import OrderedDict
 from copy import deepcopy
-import datetime as dtm
 
-from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
-from telegram.ext import (
-    ConversationHandler,
-    CallbackContext,
-    Filters,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (CallbackContext, CallbackQueryHandler,
+                          CommandHandler, ConversationHandler, Filters,
+                          MessageHandler)
 
-from constants import *
 import utils
+from constants import *
 
 # Enable logging
 logging.basicConfig(format=log_format, level=log_level)
@@ -64,14 +57,18 @@ RECORD_KEYS = ('date',
 #
 # Inline keyboards
 #
+# A single 'Back' button
+def back_button(text: str = 'Back') -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup.from_button(InlineKeyboardButton(text=text, callback_data=str(BACK)))
+
 # Entry-point keyboard
 # ROW_1 = ('New record', 'Show data')
 # ROW_2 = ('Back',)
 entry_inline_kb = [
     [
-        InlineKeyboardButton(text='➕ New record', callback_data=str(NEW)),
-        InlineKeyboardButton(text='🗂️ Show records', callback_data=str(SHOW)),
-        InlineKeyboardButton(text='🗑 Clear records', callback_data=str(CLEAR))
+        InlineKeyboardButton(text='➕ Add', callback_data=str(NEW)),
+        InlineKeyboardButton(text='🗂️ Show', callback_data=str(SHOW)),
+        InlineKeyboardButton(text='🗑 Remove', callback_data=str(CLEAR))
     ],
     [
         InlineKeyboardButton(text='🚪 Exit', callback_data=str(CANCEL))
@@ -99,7 +96,7 @@ record_inline_kb = [
     [
         InlineKeyboardButton(text='Save', callback_data=str(SAVE)),
         InlineKeyboardButton(text='Quick record', callback_data=str(QUICK_RECORD)),
-        InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL))
+        InlineKeyboardButton(text='Cancel', callback_data=str(BACK))
     ]
 ]
 
@@ -216,7 +213,7 @@ def save(update: Update, context: CallbackContext) -> str:
 
         query.edit_message_text(
             f"This is the record just saved:\n\n{utils.data_to_str(record)}",
-            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Ok', callback_data=str(BACK)))
+            reply_markup=back_button('Ok')
         )
         
         # Reset the current record to an empty record
@@ -236,7 +233,7 @@ def quick_input(update: Update, _: CallbackContext) -> str:
 <date>, <reason>, <amount>, <account>
 ```
 You must use commas \(`,`\) *only* to separate the fields\.""",
-        reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Cancel', callback_data=str(CANCEL)))
+        reply_markup=back_button('Cancel')
     )
     return QUICK_INPUT
 
@@ -270,44 +267,77 @@ def back_to_start(update: Update, context: CallbackContext) -> str:
 
 def show_data(update: Update, context: CallbackContext) -> str:
     """Show the records saved so far"""
+    records = context.user_data.get('records')
     query = update.callback_query
     query.answer()
-    keyboard = InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Back', callback_data=str(BACK)))
 
     logger.info(f"context.user_data: {context.user_data}")
     
-    records = context.user_data.get('records')
     if records:
-        records_to_str = '\n\=\=\=\n'.join(map(utils.data_to_str, records))
-        
-        logger.info("Records:\n{}".format(records))
-        
+        records_to_str = '\n\n'.join([f"__Record \#{i+1}__\n{utils.data_to_str(record, prefix='  ')}" for i, record in enumerate(records)])
         query.edit_message_text(
-            text=f"These are the records added so far:\n\n{records_to_str}",
-            reply_markup=keyboard
+            text=f"*The records you saved so far:*\n\n{records_to_str}",
+            reply_markup=back_button()
         )
     else:
-        query.edit_message_text("You have not added any records yet\!", reply_markup=keyboard)
+        query.edit_message_text("You have saved *no records*\.", reply_markup=back_button())
 
     return SELECTING_ACTION
 
 def clear_data(update: Update, context: CallbackContext) -> str:
-    """Manually clear the records"""
-    keyboard = InlineKeyboardMarkup.from_button(InlineKeyboardButton(text='Back', callback_data=str(BACK)))
+    """Prompt the user which records to clear"""
     records = context.user_data.get('records')
     query = update.callback_query
     query.answer()
-    
-    if records:
-        query.edit_message_text(
-            f"{len(records)} record{' has' if len(records) == 1 else 's have'} been cleared\.",
-            reply_markup=keyboard
-        )
-        records.clear()
-    else:
-        query.edit_message_text("There are no records to clear\.", reply_markup=keyboard)
 
-    return SELECTING_ACTION
+    if records:
+        records_to_str = '\n\n'.join([f"__Record \#{i+1}__\n{utils.data_to_str(record, prefix='  ')}" for i, record in enumerate(records)])
+        query.edit_message_text(
+            "*Which records do you want to remove?* Use `/cancel` to stop\.\nExamples:\n"
+            " \- `1-3` removes records *from* 1 *to* 3\n"
+            " \- `1,3` removes *only* record 1 *and* 3\n"
+            " \- `All` or `*` removes *every record*\.\n\n"
+            f"*The records you saved so far:*\n\n{records_to_str}"
+        )
+        return REPLY
+    else:
+        query.edit_message_text("You have saved *no records*\.", reply_markup=back_button())
+        return SELECTING_ACTION
+
+
+def clear_records(update: Update, context: CallbackContext) -> str:
+    """Clear one or multiple records"""
+    records = context.user_data['records']
+    num_records = len(records)
+    text = update.message.text.strip()
+    
+    try:
+        if '-' in text:
+            first, last = [int(x.strip()) for x in text.split('-')]
+            del records[first-1:last]
+        elif ',' in text:
+            record_idx = [int(x.strip())-1 for x in text.split(',')]
+            # workaround to delete multiple elements of a list: create a new list omitting the elements to remove
+            new_records = [i for j, i in enumerate(records) if j not in record_idx]
+            context.user_data.update({'records': new_records})
+        elif (idx := re.match(r'([0-9]+)', text)) is not None:
+            idx = int(idx.group(0))
+            del records[idx-1]
+        elif re.match(r'(all|\*)', text, re.IGNORECASE):
+            records.clear()
+        else:
+            raise ValueError
+    except IndexError:
+        update.message.reply_text(f"⚠️ Error while trying to delete a record that does not exist\.")
+    except ValueError:
+        update.message.reply_text("⚠️ Invalid syntax, try again\.\n\nExamples:\n"
+            " \- `1-3` removes records *from* 1 *to* 3\n"
+            " \- `1,3` removes *only* record 1 *and* 3\n"
+            " \- `All` or `*` removes *every record*\.")
+    else:
+        update.message.reply_text(f"{num_records - len(context.user_data['records'])} record{' has' if (num_records - len(context.user_data['records'])) == 1 else 's have'} been removed\.")
+    
+    return STOPPING
 
 def cancel(update: Update, context: CallbackContext) -> str:
     """Cancel the `record` command"""
@@ -326,8 +356,7 @@ def stop(update: Update, _: CallbackContext) -> int:
     """End the conversation altogether"""
     return utils.stop(command='record', action='add a new record', update=update)
 
-# `record` handlers
-# Second-level conversation handler
+# 'New record' handler (2nd level)
 new_record_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(new_record, pattern=f'^{NEW}$'),
@@ -340,7 +369,6 @@ new_record_handler = ConversationHandler(
                 ),
                 CallbackQueryHandler(save, pattern=f'^{SAVE}$'),
                 CallbackQueryHandler(quick_input, pattern=f'{QUICK_RECORD}$'),
-                CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
             ],
             QUICK_INPUT: [
                 MessageHandler(Filters.text & ~Filters.command, quick_save),
@@ -350,16 +378,39 @@ new_record_handler = ConversationHandler(
             ]
         },
         fallbacks=[
-            CommandHandler('cancel', cancel),
+            CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
             CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+            CommandHandler('cancel', cancel),
         ],
         map_to_parent={
             END: SELECTING_ACTION,
             SELECTING_ACTION: SELECTING_ACTION,
             STOPPING: END,
         },
-        name="record_second_level",
+        name="add_record_second_level",
         persistent=False
+)
+
+# 'Remove record' handler
+clear_data_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(clear_data, pattern=f'^{CLEAR}$'),
+    ],
+    states={
+        REPLY: [
+            MessageHandler(Filters.text & ~Filters.command, clear_records),
+        ],
+    },
+    fallbacks=[
+            CommandHandler('cancel', cancel),
+            CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END,
+    },
+    name='remove_record_second_level'
 )
 
 # Top-level conversation handler
@@ -370,8 +421,8 @@ record_handler = ConversationHandler(
     states = {
         SELECTING_ACTION: [
             new_record_handler,
+            clear_data_handler,
             CallbackQueryHandler(show_data, pattern=f'^{SHOW}$'),
-            CallbackQueryHandler(clear_data, pattern=f'^{CLEAR}$'),
             CallbackQueryHandler(stop, pattern=f'^{CANCEL}$'),
         ],
     },

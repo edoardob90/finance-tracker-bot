@@ -1,27 +1,24 @@
 """
 Utils module
 """
-import re
+import html
 import json
 import logging
 import pathlib
+import re
 import traceback
-import html
-import json
 from functools import partial
-from typing import Tuple, Union, Dict, Any
-from dateutil.parser import parse, ParserError
+from typing import Any, Dict, Tuple, Union
 
-from telegram import Update, ParseMode
+from dateutil.parser import ParserError, parse
+from google.auth.exceptions import RefreshError, UserAccessTokenError
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from gspread import Client
+from telegram import ParseMode, Update
 from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown as EscapeMarkdown
-
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google.auth.exceptions import UserAccessTokenError, RefreshError
-
-from gspread import Client
 
 from constants import *
 from spreadsheet import *
@@ -77,7 +74,7 @@ def error_handler(update: Update, context: CallbackContext) -> None:
 
     # Which kind of error?
     if isinstance(context.error, ParserError):
-        update.message.reply_text("You entered an invalid date\. Try again\.")
+        update.message.reply_text("⚠️ You entered an invalid date\. Try again\.")
     
     # Notify the developer about the exception
     if developer_user_id:
@@ -88,10 +85,9 @@ def error_handler(update: Update, context: CallbackContext) -> None:
 #
 # Record
 #
-def data_to_str(data: Dict[str, Any]) -> str:
+def data_to_str(data: Dict[str, Any], prefix: str = "") -> str:
     """Build a string concatenating all values in a data `Dict`"""
-    facts = [f"*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items() if (value and key != 'recorded_on')]
-    
+    facts = [f"{prefix}*{escape_markdown(key)}:* {escape_markdown(str(value))}" for key, value in data.items() if (value and key != 'recorded_on')]
     return "\n".join(facts)
 
 def currency_parser(number_str: str) -> Tuple[float, str]:
