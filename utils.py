@@ -14,6 +14,7 @@ from dateutil.parser import ParserError, parse
 from google.auth.exceptions import RefreshError, UserAccessTokenError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from google_auth_oauthlib.flow import Flow
 from gspread import Client
 from telegram import ParseMode, Update
@@ -126,94 +127,99 @@ def parse_data(key: str, value: str) -> Dict:
 #
 # Settings
 #
-def oauth(first_login: bool = False, credentials_file: str = None, token_file: str = None, code: str = None, user_data: Dict = None) -> Tuple[Union[Credentials, None], Union[None, str]]:
+def oauth(first_login: bool = False, credentials_file: str = None, token_file: str = None, code: str = None, user_data: Dict = None, service_account: bool = False) -> Tuple[Union[Credentials, None], Union[None, str]]:
     """Start the authorization flow and return a valid token or refresh an expired one"""
     creds = None
     result = None
 
     logger.debug(f'Current auth data: {user_data}')
 
-    if not first_login:
-        # Look up credentials in `user_data` dictionary ...
-        if user_data is not None and 'creds' in user_data:
-            logger.debug("Loading credentials from user_data dict")
-            creds = Credentials.from_authorized_user_info(json.loads(user_data['creds']), SCOPES)
-        # Otherwise try to open `token_file`
-        elif token_file is not None and pathlib.Path(token_file).exists():
-            logger.debug("Loading credentials from JSON file")
-            creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+    # TODO: this is *temporary* until I have the app approved by Google
+    if service_account:
+        creds = ServiceAccountCredentials.from_service_account_file(filename=credentials_file, scopes=SCOPES)
+        result = 'service account'
+    else:
+        if not first_login:
+            # Look up credentials in `user_data` dictionary ...
+            if user_data is not None and 'creds' in user_data:
+                logger.debug("Loading credentials from user_data dict")
+                creds = Credentials.from_authorized_user_info(info=json.loads(user_data['creds']), scopes=SCOPES)
+            # Otherwise try to open `token_file`
+            elif token_file is not None and pathlib.Path(token_file).exists():
+                logger.debug("Loading credentials from JSON file")
+                creds = Credentials.from_authorized_user_file(filename=token_file, scopes=SCOPES)
 
-    if creds is not None:
-        logger.debug('Credentials loaded from user data or token file')
-        result = 'ok'
+        if creds is not None:
+            logger.debug('Credentials loaded from user data or token file')
+            result = 'ok'
 
-    if not creds or not creds.valid:
-        logger.debug("Credentials don't have a token or the token is expired")
-        if creds and creds.expired and creds.refresh_token:
-            logger.debug("Credentials are expired")
-            try:
-                creds.refresh(Request())
-            except (UserAccessTokenError, RefreshError):
-                result = 'error'
-                logger.error("Error while attempting to refresh the token")
-                raise
-            else:
-                result = 'ok'
-        else:
-            logger.debug("New login: starting a new OAuth flow")
-            try:
-                flow = Flow.from_client_secrets_file(
-                    credentials_file,
-                    scopes=SCOPES,
-                    redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-            except TypeError:
-                result = 'error'
-                logger.error("Client secret file cannot be 'None'")
-                raise
-            except FileNotFoundError:
-                result = 'error'
-                logger.error(f"Client secret file '{credentials_file}' not found")
-                raise
-
-            if code:
-                logger.debug("Last OAuth step: fetching the token from the authorization code")
-                # We have an authorization code. This code is used to get the
-                # access token.
-                flow.fetch_token(code=code)
-                
-                # Get the credentials
+        if not creds or not creds.valid:
+            logger.debug("Credentials don't have a token or the token is expired")
+            if creds and creds.expired and creds.refresh_token:
+                logger.debug("Credentials are expired")
                 try:
-                    creds = flow.credentials
-                except ValueError:
-                    logger.error("No valid token found in session")
+                    creds.refresh(Request())
+                except (UserAccessTokenError, RefreshError):
+                    result = 'error'
+                    logger.error("Error while attempting to refresh the token")
+                    raise
+                else:
+                    result = 'ok'
+            else:
+                logger.debug("New login: starting a new OAuth flow")
+                try:
+                    flow = Flow.from_client_secrets_file(
+                        credentials_file,
+                        scopes=SCOPES,
+                        redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+                except TypeError:
+                    result = 'error'
+                    logger.error("Client secret file cannot be 'None'")
+                    raise
+                except FileNotFoundError:
+                    result = 'error'
+                    logger.error(f"Client secret file '{credentials_file}' not found")
                     raise
 
-                # Store credentials
-                creds_stored = False
-                # in the `user_data` dict
-                if user_data is not None:
-                    creds_stored = True
-                    user_data['creds'] = creds.to_json()
-                
-                # as a JSON file at `token_file`
-                # FIXME: is this necessary? should this backup file be removed completely?
-                if token_file is not None:
-                    creds_stored = True
-                    user_data['token_file'] = token_file
-                    with pathlib.Path(token_file).open('w') as token:
-                        token.write(creds.to_json())
+                if code:
+                    logger.debug("Last OAuth step: fetching the token from the authorization code")
+                    # We have an authorization code. This code is used to get the
+                    # access token.
+                    flow.fetch_token(code=code)
+                    
+                    # Get the credentials
+                    try:
+                        creds = flow.credentials
+                    except ValueError:
+                        logger.error("No valid token found in session")
+                        raise
 
-                if creds_stored:
-                    result = 'Token has been saved\.'
-            else:
-                logger.debug("OAuth step: asking the user to authorize the app and enter the authorization code")
-                # Tell the user to go to the authorization URL to get the authorization code
-                auth_url, _ = flow.authorization_url(
-                    prompt='consent',
-                    access_type='offline',
-                    include_granted_scopes='true'
-                )
-                result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
+                    # Store credentials
+                    creds_stored = False
+                    # in the `user_data` dict
+                    if user_data is not None:
+                        creds_stored = True
+                        user_data['creds'] = creds.to_json()
+                    
+                    # as a JSON file at `token_file`
+                    # FIXME: is this necessary? should this backup file be removed completely?
+                    if token_file is not None:
+                        creds_stored = True
+                        user_data['token_file'] = token_file
+                        with pathlib.Path(token_file).open('w') as token:
+                            token.write(creds.to_json())
+
+                    if creds_stored:
+                        result = 'Token has been saved\.'
+                else:
+                    logger.debug("OAuth step: asking the user to authorize the app and enter the authorization code")
+                    # Tell the user to go to the authorization URL to get the authorization code
+                    auth_url, _ = flow.authorization_url(
+                        prompt='consent',
+                        access_type='offline',
+                        include_granted_scopes='true'
+                    )
+                    result = f'Please, go to [this URL]({auth_url}) to request an authorization code\. Send me the code you obtained\.'
     
     return creds, result
 
@@ -277,9 +283,15 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     
     # Fetch the credentials and check that there are no errors
     try:
-        creds, _ = oauth(user_data=auth_data)
+        if SERVICE_ACCOUNT:
+            creds, _ = oauth(service_account=SERVICE_ACCOUNT, credentials_file=SERVICE_ACCOUNT_FILE)
+        else:
+            creds, _ = oauth(user_data=auth_data)
     except RefreshError:
         send_message(text="⚠️ Error while refreshing your credentials\. You should logout and login again\. Go to `/settings`, then *Login*, and then click *Logout*\.")
+        return None
+    except:
+        send_message(text="⚠️ An error occurred\. Please, contact the developer to find a solution\. Sorry 😞")
         return None
     else:
         # Open the spreadsheet

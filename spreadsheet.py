@@ -1,7 +1,8 @@
-from typing import Dict, List, NoReturn, Any, Union
+from typing import Any, Dict, List, NoReturn, Union
 
-from gspread import Client, Worksheet
+from gspread import Client
 from gspread import Spreadsheet as Document
+from gspread import Worksheet
 from gspread.exceptions import APIError, WorksheetNotFound
 
 SCOPES = [
@@ -88,10 +89,25 @@ class Spreadsheet():
     def range(self, range: str) -> NoReturn:
         self._range = range
 
+    @property
+    def permissions(self) -> Any:
+        return self.doc.list_permissions()
+
+    @permissions.setter
+    def permissions(self) -> NoReturn:
+        raise SpreadsheetError("Cannot set a spreadsheet permissions.")
+
     # Methods
     def append_records(self, values: List[List]) -> Any:
         """Append one or more records to the spreadhseet"""
-        return self.sheet.append_rows(values, value_input_option="USER_ENTERED", table_range=self.range)
+        try:
+            response = self.sheet.append_rows(values, value_input_option="USER_ENTERED", table_range=self.range)
+        except APIError as exc:
+            err = exc.response.json().get('error')
+            if err and err['code'] == 403 and err['status'] == "PERMISSION_DENIED":
+                raise SpreadsheetError(f"You do not have the permissions to edit the sheet '{self.sheet_name}' in the spreadsheet with ID '{self.spreadsheet_id}'.")
+        else:
+            return response
 
     def get_records(self, sheet_name: str = None, range_: str = None, as_dict: bool = False, **kwargs) -> Union[List, List[Dict]]:
         """Get records from a range (A1 notation) or an entire sheet"""

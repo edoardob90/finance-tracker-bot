@@ -149,14 +149,31 @@ def start_login(update: Update, context: CallbackContext) -> str:
     # Check if the auth step has been already done
     if not utils.check_auth(auth_data):
         # Start the OAuth2 process
-        _, result = utils.oauth(
+        creds, result = utils.oauth(
+            service_account=SERVICE_ACCOUNT,
             first_login=True,
-            credentials_file=CREDS,
+            credentials_file=CREDS if not SERVICE_ACCOUNT else SERVICE_ACCOUNT_FILE,
             token_file=auth_data['token_file'],
             user_data=auth_data
         )
+        if SERVICE_ACCOUNT:
+            result = f"""⚠️ This is only a __*temporary*__ login method
+
+To complete the login:
+
+  1\. Open your spreadsheet on Google Sheet
+
+  2\. Share the spreadsheet with the following account: `{creds.service_account_email}`
+
+  3\. Make sure to set the role to *Editor* or the bot will not be able to modify your spreadsheet
+
+After that, you can use the bot normally\. Bye 👋"""
+            auth_data['auth_is_done'] = True
+            auth_data['creds'] = {'service_account_email': creds.service_account_email}
+        
         query.edit_message_text(text=result)
-        return NEW_LOGIN
+        
+        return NEW_LOGIN if not SERVICE_ACCOUNT else STOPPING
     else:
         query.edit_message_text(
             "You already logged in\. What do you want to do?",
@@ -381,7 +398,7 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     utils.remove_job_if_exists(job_name, context)
     
     # Parse the new time/date
-    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{2}))', re.IGNORECASE)
+    once_pattern = re.compile(r'(now|(?P<hour>\d{2}):(?P<minute>\d{2})|(?P<seconds>\d{1,2}))', re.IGNORECASE)
     daily_pattern = re.compile(r'(d|daily)\s*(?P<dow>[1-7])?\s*(?P<hour>\d{2}):(?P<minute>\d{2})', re.IGNORECASE)
     monthly_pattern = re.compile(r'(m|monthly) (?P<day>\d{2}) (?P<hour>\d{2}):(?P<minute>\d{2})', re.IGNORECASE)
 
