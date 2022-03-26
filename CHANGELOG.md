@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - Fallback to user account
+- Auth_type is required to have valid credentials
 
 ### Documentation
 

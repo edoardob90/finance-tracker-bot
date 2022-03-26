@@ -231,7 +231,12 @@ def check_auth(auth_data: Dict = None) -> bool:
     """Check if the auth data for a user are valid"""
     if not auth_data:
         return False
+
+    # Check if the auth process has ever been started
+    if not auth_data.get('auth_type'):
+        return False
     
+    # Check if the auth process has been completed once
     if auth_data.get('auth_is_done'):
         # First, check if credentials have been stored in `user_data` dict
         if 'creds' in auth_data:
@@ -276,18 +281,18 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
 
     # Check auth and whether a spreadsheet has been set
     if not check_auth(auth_data):
-        logger.warning(f"Cannot add data to spreadsheet of user {user_id}: authorization is incomplete.")
+        logger.error(f"Cannot add data to spreadsheet of user {user_id}: authorization is incomplete.")
         send_message(text="⚠️ I could not add your data to the spreadsheet: *authorization is incomplete*\. Enter the `/settings` to log in\.")
         return None
 
     if not check_spreadsheet(spreadsheet_data):
-        logger.warning(f"Cannot add data to spreadsheet of user {user_id}: spreadsheet has not been set or is invalid.")
+        logger.error(f"Cannot add data to spreadsheet of user {user_id}: spreadsheet has not been set or is invalid.")
         send_message(text="⚠️ I could not add your data to the spreadsheet: ID or sheet name *are not set*\. Enter the `/settings` to set them\.")
         return None
     
     # Fetch the credentials and check that there are no errors
     try:
-        if SERVICE_ACCOUNT and auth_data['auth_type'] == 'service_account':
+        if SERVICE_ACCOUNT:
             creds, _ = oauth(service_account=SERVICE_ACCOUNT, credentials_file=SERVICE_ACCOUNT_FILE)
         else:
             creds, _ = oauth(user_data=auth_data)
