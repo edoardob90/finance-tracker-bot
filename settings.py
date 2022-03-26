@@ -173,7 +173,7 @@ After that, you can use the bot normally\. Bye 👋"""
         
         query.edit_message_text(text=result)
         
-        return NEW_LOGIN if not SERVICE_ACCOUNT else STOPPING
+        return STOPPING if SERVICE_ACCOUNT else NEW_LOGIN
     else:
         query.edit_message_text(
             "You already logged in\. What do you want to do?",

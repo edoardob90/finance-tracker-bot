@@ -136,10 +136,14 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
 
     # TODO: this is *temporary* until I have the app approved by Google
     if service_account:
+        if first_login:
+            user_data['auth_type'] = 'service_account'
         creds = ServiceAccountCredentials.from_service_account_file(filename=credentials_file, scopes=SCOPES)
         result = 'service account'
     else:
-        if not first_login:
+        if first_login:
+            user_data['auth_type'] = 'user_account'
+        else:
             # Look up credentials in `user_data` dictionary ...
             if user_data is not None and 'creds' in user_data:
                 logger.debug("Loading credentials from user_data dict")
@@ -225,7 +229,7 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
 
 def check_auth(auth_data: Dict = None) -> bool:
     """Check if the auth data for a user are valid"""
-    if auth_data is None:
+    if not auth_data:
         return False
     
     if auth_data.get('auth_is_done'):
@@ -242,7 +246,7 @@ def check_auth(auth_data: Dict = None) -> bool:
 
 def check_spreadsheet(spreadsheet_data: Dict = None) -> bool:
     """Check if the spreadsheet is set and is valid"""
-    if spreadsheet_data is None:
+    if not spreadsheet_data:
         return False
     
     # TODO: could also check if the spreadsheet actually exists
@@ -283,7 +287,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
     
     # Fetch the credentials and check that there are no errors
     try:
-        if SERVICE_ACCOUNT:
+        if SERVICE_ACCOUNT and auth_data['auth_type'] == 'service_account':
             creds, _ = oauth(service_account=SERVICE_ACCOUNT, credentials_file=SERVICE_ACCOUNT_FILE)
         else:
             creds, _ = oauth(user_data=auth_data)

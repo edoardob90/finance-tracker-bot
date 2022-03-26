@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Bug Fixes
+
+- Fallback to user account
+
 ### Documentation
 
 - Add info about using a service account
