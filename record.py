@@ -150,24 +150,30 @@ def prompt(update: Update, context: CallbackContext) -> str:
 
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
-    query.edit_message_text(f"Enter the *{choice}* of the new record") 
+    reply_kb = InlineKeyboardMarkup.from_button(InlineKeyboardButton(text="Today", callback_data=dtm.datetime.today().strftime("%d/%m/%Y"))) if user_data['choice'] == 'date' else None
+    query.edit_message_text(f"Enter the *{choice}* of the new record", reply_markup=reply_kb) 
 
     return REPLY
 
 def store(update: Update, context: CallbackContext) -> str:
     """Store the provided info and ask for the next"""
     user_data = context.user_data.get('record')
-    
-    data = update.message.text
     category = user_data['choice']
-    user_data.update(utils.parse_data(category, data))
     del user_data['choice']
 
-    update.message.reply_text(
-        f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n"
-        f"{utils.data_to_str(user_data)}",
-        reply_markup=InlineKeyboardMarkup(record_inline_kb)
-    )
+    if update.callback_query:
+        update.callback_query.answer()
+        data = update.callback_query.data
+    else:
+        data = update.message.text
+
+    user_data.update(utils.parse_data(category, data))
+    
+    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+
+    reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(user_data)}"
+
+    reply_func(reply_text, reply_markup=InlineKeyboardMarkup(record_inline_kb))
     
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
@@ -374,7 +380,8 @@ new_record_handler = ConversationHandler(
                 MessageHandler(Filters.text & ~Filters.command, quick_save),
             ],
             REPLY: [
-                MessageHandler(Filters.text & ~Filters.command, store)
+                MessageHandler(Filters.text & ~Filters.command, store),
+                CallbackQueryHandler(store, pattern=r'\d{2}\/\d{2}\/\d{4}')
             ]
         },
         fallbacks=[
