@@ -2,11 +2,12 @@
 Bot functions for the `/record` command
 """
 import datetime as dtm
-import enum
 import logging
 import re
 from collections import OrderedDict
 from copy import deepcopy
+
+from dateutil.parser import ParserError
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
@@ -159,23 +160,28 @@ def store(update: Update, context: CallbackContext) -> str:
     """Store the provided info and ask for the next"""
     user_data = context.user_data.get('record')
     category = user_data['choice']
-    del user_data['choice']
 
     if update.callback_query:
         update.callback_query.answer()
         data = update.callback_query.data
+        reply_func = update.callback_query.edit_message_text
     else:
         data = update.message.text
+        reply_func =  update.message.reply_text
 
-    user_data.update(utils.parse_data(category, data))
-    
-    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
-
-    reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(user_data)}"
-
-    reply_func(reply_text, reply_markup=InlineKeyboardMarkup(record_inline_kb))
-    
-    logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
+    try:
+        user_data.update(utils.parse_data(category, data))
+    except ParserError:
+        reply_func(f"⚠️ You entered an invalid date: '{data}'\. Please, try again\.")
+        raise
+    except:
+        reply_func(f"⚠️ You entered invalid data: '{data}'\. Please, try again\.")
+        raise
+    else:
+        del user_data['choice']
+        reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(user_data)}"
+        reply_func(reply_text, reply_markup=InlineKeyboardMarkup(record_inline_kb))
+        logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     return INPUT
 

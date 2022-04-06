@@ -72,10 +72,6 @@ def error_handler(update: Update, context: CallbackContext) -> None:
         f'<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n'
         f'<pre>{html.escape(tb_string)}</pre>'
     )
-
-    # Which kind of error?
-    if isinstance(context.error, ParserError):
-        update.message.reply_text("⚠️ You entered an invalid date\. Try again\.")
     
     # Notify the developer about the exception
     if developer_user_id:
