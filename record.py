@@ -1,6 +1,7 @@
 """
 Bot functions for the `/record` command
 """
+from ctypes import util
 import datetime as dtm
 import logging
 import re
@@ -151,8 +152,9 @@ def prompt(update: Update, context: CallbackContext) -> str:
 
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
-    reply_kb = InlineKeyboardMarkup.from_button(InlineKeyboardButton(text="Today", callback_data=dtm.datetime.today().strftime("%d/%m/%Y"))) if user_data['choice'] == 'date' else None
-    query.edit_message_text(f"Enter the *{choice}* of the new record", reply_markup=reply_kb) 
+    reply_kb = InlineKeyboardMarkup(utils.calendar_keyboard(dtm.datetime.today())) if user_data["choice"] == "date" else None
+    reply_msg = "Enter the *Date* of the new record \(✅ \= date is *today*\) " if user_data["choice"] == "date" else f"Enter the *{choice}* of the new record"
+    query.edit_message_text(reply_msg, reply_markup=reply_kb) 
 
     return REPLY
 

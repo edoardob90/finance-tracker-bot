@@ -7,17 +7,20 @@ import logging
 import pathlib
 import re
 import traceback
+from calendar import Calendar
+from datetime import datetime
 from functools import partial
 from typing import Any, Dict, Tuple, Union
 
-from dateutil.parser import ParserError, parse
+from dateutil.parser import parse
 from google.auth.exceptions import RefreshError, UserAccessTokenError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from google.oauth2.service_account import \
+    Credentials as ServiceAccountCredentials
 from google_auth_oauthlib.flow import Flow
 from gspread import Client
-from telegram import ParseMode, Update
+from telegram import InlineKeyboardButton, ParseMode, Update
 from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown as EscapeMarkdown
 
@@ -118,6 +121,20 @@ def parse_data(key: str, value: str) -> Dict:
         data = str(value)
     
     return {key: data}
+
+def calendar_keyboard(date: datetime):
+    """Return a InlineKeyboardMarkup with a calendar of days of the given month"""
+    year, month, today, *_ = date.timetuple()
+    
+    def calendar_day_button(day: int):
+        """Return a InlineKeyboardButton to be used in a calendar keyboard"""
+        if day == 0:
+            return InlineKeyboardButton(text="❌", callback_data=str(None))
+        return InlineKeyboardButton(text=("✅" if day == today else str(day)), callback_data=f"{day:02d}/{month:02d}/{year}")
+
+    calendar = Calendar().monthdayscalendar(year, month)
+   
+    return  [list(map(calendar_day_button, row)) for row in calendar]
 
 
 #
@@ -305,6 +322,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
             spreadsheet_id=spreadsheet_data['id'],
             sheet_name=spreadsheet_data['sheet_name']
         )
+        spreadsheet.range = "A2:G500"
 
     # Add the records to the spreadsheet
     try:

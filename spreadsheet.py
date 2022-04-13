@@ -66,7 +66,7 @@ class Spreadsheet():
 
     @property
     def sheet(self) -> Worksheet:
-        """Returns a single sheet object"""
+        """A single sheet object of the spreadsheet"""
         try:
             sheet = self.doc.worksheet(self.sheet_name)
         except WorksheetNotFound:
@@ -83,11 +83,12 @@ class Spreadsheet():
 
     @property
     def range(self) -> str:
+        """The sheet table range in A1 notation"""
         return self._range
     
     @range.setter
-    def range(self, range: str) -> NoReturn:
-        self._range = range
+    def range(self, _range: str) -> NoReturn:
+        self._range = _range
 
     @property
     def permissions(self) -> Any:
