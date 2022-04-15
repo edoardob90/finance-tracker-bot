@@ -152,7 +152,10 @@ def prompt(update: Update, context: CallbackContext) -> str:
 
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
-    reply_kb = InlineKeyboardMarkup(utils.calendar_keyboard(dtm.datetime.today())) if user_data["choice"] == "date" else None
+    calendar_keyboard = utils.calendar_keyboard(dtm.datetime.today())
+    calendar_keyboard.append([InlineKeyboardButton(text="Cancel", callback_data=f"{CANCEL}")])
+
+    reply_kb = InlineKeyboardMarkup(calendar_keyboard) if user_data["choice"] == "date" else None
     reply_msg = "Enter the *Date* of the new record \(✅ \= date is *today*\) " if user_data["choice"] == "date" else f"Enter the *{choice}* of the new record"
     query.edit_message_text(reply_msg, reply_markup=reply_kb) 
 

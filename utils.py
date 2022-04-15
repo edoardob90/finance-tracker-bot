@@ -125,7 +125,7 @@ def parse_data(key: str, value: str) -> Dict:
 def calendar_keyboard(date: datetime):
     """Return a InlineKeyboardMarkup with a calendar of days of the given month"""
     year, month, today, *_ = date.timetuple()
-    
+
     def calendar_day_button(day: int):
         """Return a InlineKeyboardButton to be used in a calendar keyboard"""
         if day == 0:
@@ -133,7 +133,7 @@ def calendar_keyboard(date: datetime):
         return InlineKeyboardButton(text=("✅" if day == today else str(day)), callback_data=f"{day:02d}/{month:02d}/{year}")
 
     calendar = Calendar().monthdayscalendar(year, month)
-   
+
     return  [list(map(calendar_day_button, row)) for row in calendar]
 
 
