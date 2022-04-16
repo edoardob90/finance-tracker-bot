@@ -249,28 +249,30 @@ def quick_input(update: Update, _: CallbackContext) -> str:
 ```
 <date>, <reason>, <amount>, <account>
 ```
-You must use commas \(`,`\) *only* to separate the fields\.""",
+You must use commas \(`,`\) *only* to separate the fields\. You can enter *multiple* records, one per line\.""",
         reply_markup=back_button('Cancel')
     )
     return QUICK_INPUT
 
 def quick_save(update: Update, context: CallbackContext) -> str:
     """Quick-save a new record written on a single line. Fields must be comma-separated"""
-    record_data = [x.strip() for x in update.message.text.split(',')]
-    
+    record_data = [[x.strip() for x in line.split(',')] for line in update.message.text.split('\n')]
+    n_records = len(record_data)
+
     # Fill in the new record with the input data
-    record = OrderedDict.fromkeys(RECORD_KEYS)
-    for key, val in zip(('date', 'reason', 'amount', 'account'), record_data):
-        record.update(utils.parse_data(key, val))
-    
-    record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
-    
-    logger.info(f"User {update.message.from_user.id} added a quick record: {record}")
-    
-    context.user_data['records'].append(record)
-    
+    for record in record_data:
+        _record = OrderedDict.fromkeys(RECORD_KEYS)
+        for key, val in zip(('date', 'reason', 'amount', 'account'), record):
+            _record.update(utils.parse_data(key, val))
+        # add timestamp
+        _record['recorded_on'] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
+        # append the record
+        context.user_data['records'].append(_record)
+
+    # logger.info(f"User {update.message.from_user.id} added a quick record: {record}")
+
     update.message.reply_text(
-        f"This is the record just saved:\n\n{utils.data_to_str(record)}\n\n"
+        f"*{n_records}* record{'s' if n_records > 1 else ''} {'have' if n_records > 1 else 'has'} been added\. This is the *last* record saved:\n\n{utils.data_to_str(_record)}\n\n"
         "You can add a new record with the command `/record`\. 👋"
     )
 
