@@ -10,7 +10,7 @@ A Telegram bot that helps with your personal finances. It's an experimental and 
 
 ## Setup
 
-## Bot config
+### Bot config
 
 The bot requires a few environment variables to be set to work properly. They should be placed in a file called `.env` in the same directory of `finance_tracker_bot.py`.
 
@@ -31,7 +31,7 @@ These are the variables that can be configured:
 | `DB_NAME` | database name where to store user data and APS jobs (**required**)
 | `DATA_DIR` | where to store users' access tokens after a successful login with Google. Tokens are also stored in-memory (and saved to the database), so this should be considered as (less safe) backup location. Default is a `storage` directory
 
-## Google API
+### Google API
 
 Using Google Sheets API requires the authentication via OAuth2 and the user consent using a Google Account. The authentication token is retrieved by the bot during the auth step, but a credentials file (also known as "client secret" file) is required. The absolute path of this file should be stored in an environment variable named `CREDS_FILE`. If that variable is not set, the client secret filename is assumed to be `credentials.json` and placed in **the same directory of the bot**. The client secret file contains sensitive information, hence it should be kept in a safe location.
 
