@@ -97,9 +97,11 @@ record_inline_kb = [
     ],
     [
         InlineKeyboardButton(text='Save', callback_data=str(SAVE)),
-        InlineKeyboardButton(text='Quick record', callback_data=str(QUICK_RECORD)),
         InlineKeyboardButton(text='Cancel', callback_data=str(BACK))
-    ]
+    ],
+    [
+        InlineKeyboardButton(text='Quick record', callback_data=str(QUICK_RECORD)),
+    ],
 ]
 
 def start(update: Update, context: CallbackContext) -> str:
@@ -121,12 +123,8 @@ def start(update: Update, context: CallbackContext) -> str:
 def new_record(update: Update, context: CallbackContext) -> str:
     """Ask the user the details of a new record"""
     update.callback_query.edit_message_text(
-        """Record a new expense/income\. *Remember* the follwing rules on the input data:
-
-\- `Date` should be written as `dd-mm-yyyy` or `dd mm yyyy` or `dd mm yy`\. Example: `21-12-2021`
-
-\- `Amount`: a _negative_ number is interpreted as an *expense*, while a _positive_ number as an *income*\. Example: `-150.0 EUR` means an expense of 150 euros\.\n\n"""
-f"""\- Currencies supported: '{', '.join(set(CURRENCIES.values()))}'\. You can also enter *a single letter* or the symbol: E or € → EUR, U or $ → USD\.""",
+        "Enter the detail of the new expense/income record\.\n\n"
+        f"Supported currencies: '{', '.join(set(CURRENCIES.values()))}'\. You can type a single letter \(case *insensitive*\) or the symbol: E or € \= EUR, U or $ \= USD, C \= CHF\.",
         reply_markup=InlineKeyboardMarkup(record_inline_kb)
     )
 
