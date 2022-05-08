@@ -122,6 +122,7 @@ def start(update: Update, context: CallbackContext) -> str:
 
 def new_record(update: Update, context: CallbackContext) -> str:
     """Ask the user the details of a new record"""
+    update.callback_query.answer()
     update.callback_query.edit_message_text(
         "Enter the detail of the new expense/income record\.\n\n"
         f"Supported currencies: '{', '.join(set(CURRENCIES.values()))}'\. You can type a single letter \(case *insensitive*\) or the symbol: E or € \= EUR, U or $ \= USD, C \= CHF\.",
@@ -130,9 +131,8 @@ def new_record(update: Update, context: CallbackContext) -> str:
 
     # Initialize user_data
     user_data = context.user_data
-    if 'record' not in user_data:
-        # a single empty record
-        user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
+    # a single record
+    user_data['record'] = OrderedDict.fromkeys(RECORD_KEYS)
     # the list of all the records to append
     if 'records' not in user_data:
         user_data['records'] = []
@@ -141,19 +141,27 @@ def new_record(update: Update, context: CallbackContext) -> str:
 
 def prompt(update: Update, context: CallbackContext) -> str:
     """Ask user for info about a detail of a new record"""
+    reply_kb = None
     query = update.callback_query
+    query.answer()
     choice = BUTTONS[query.data]
     user_data = context.user_data.get('record')
     user_data['choice'] = choice.lower()
 
-    query.answer()
-
     logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
+    # create the calendar keyboard of the current month
     calendar_keyboard = utils.calendar_keyboard(dtm.datetime.today())
     calendar_keyboard.append([InlineKeyboardButton(text="Cancel", callback_data=f"{CANCEL}")])
 
-    reply_kb = InlineKeyboardMarkup(calendar_keyboard) if user_data["choice"] == "date" else None
+    if user_data["choice"] == "date":
+        reply_kb = InlineKeyboardMarkup(calendar_keyboard)
+    elif user_data["choice"] == "account" and (accounts := context.user_data.get("accounts")):
+        # Inline keyboard for the preferred accounts. Each row has max 3 buttons for readability
+        reply_kb = InlineKeyboardMarkup(
+            [list(map(lambda y: InlineKeyboardButton(text=str(y), callback_data=str(y)), accounts[x:x + 3])) for x in range(0, len(accounts), 3)]
+        )
+    
     reply_msg = "Enter the *Date* of the new record \(✅ \= date is *today*\) " if user_data["choice"] == "date" else f"Enter the *{choice}* of the new record"
     query.edit_message_text(reply_msg, reply_markup=reply_kb) 
 
@@ -164,7 +172,7 @@ def store(update: Update, context: CallbackContext) -> str:
     user_data = context.user_data.get('record')
     category = user_data['choice']
 
-    if update.callback_query:
+    if update.callback_query is not None:
         update.callback_query.answer()
         data = update.callback_query.data
         reply_func = update.callback_query.edit_message_text
@@ -184,6 +192,7 @@ def store(update: Update, context: CallbackContext) -> str:
         del user_data['choice']
         reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(user_data)}"
         reply_func(reply_text, reply_markup=InlineKeyboardMarkup(record_inline_kb))
+        
         logger.info(f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}")
 
     return INPUT
@@ -208,7 +217,7 @@ def save(update: Update, context: CallbackContext) -> str:
             "The new record is empty 🤔\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
         )
-    elif not record['amount'] or not record['reason']:
+    elif not (record.get('amount') and record.get('reason')):
         query.edit_message_text(
             "The new record is *incomplete*\. You must add at least the *reason* and the *amount*\. Try again or cancel\.",
             reply_markup=InlineKeyboardMarkup(record_inline_kb)
@@ -216,7 +225,7 @@ def save(update: Update, context: CallbackContext) -> str:
     else:
         # Add a date placeholder if key's empty
         # 'date' field must be the first
-        if not record['date']:
+        if not record.get('date'):
             record['date'] = '-'
 
         # Add timestamp 
@@ -291,7 +300,7 @@ def show_data(update: Update, context: CallbackContext) -> str:
     logger.info(f"context.user_data: {context.user_data}")
     
     if records:
-        records_to_str = '\n\n'.join([f"__Record \#{i+1}__\n{utils.data_to_str(record, prefix='  ')}" for i, record in enumerate(records)])
+        records_to_str = '\n\n'.join([f"__Record \#{i}__\n{utils.data_to_str(record, prefix='  ')}" for i, record in enumerate(records, start=1)])
         query.edit_message_text(
             text=f"*The records you saved so far:*\n\n{records_to_str}",
             reply_markup=back_button()
@@ -392,7 +401,7 @@ new_record_handler = ConversationHandler(
             ],
             REPLY: [
                 MessageHandler(Filters.text & ~Filters.command, store),
-                CallbackQueryHandler(store, pattern=r'\d{2}\/\d{2}\/\d{4}')
+                CallbackQueryHandler(store, pattern=r'(\d{2}\/\d{2}\/\d{4}|\w+)')
             ]
         },
         fallbacks=[

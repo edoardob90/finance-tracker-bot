@@ -1,6 +1,7 @@
 """
 Bot functions for `/settings` command.
 """
+from ast import Not
 import pathlib
 import logging
 import re
@@ -38,7 +39,8 @@ logger = logging.getLogger(__name__)
     REPLY,
     INPUT,
     STOPPING,
-) = map(chr, range(7))
+    SET_ACCOUNTS,
+) = map(chr, range(8))
 
 # Constants for CallbackQuery data
 (
@@ -57,19 +59,22 @@ logger = logging.getLogger(__name__)
     DEFAULT_SCHEDULE,
     CUSTOM_SCHEDULE,
     REMOVE_SCHEDULE,
-) = map(chr, range(7, 22))
+    ACCOUNTS,
+    MODIFY_ACCOUNTS,
+) = map(chr, range(8, 25))
 
 #
 # Inline Keyboards
 #
 # Entry-point keyboard
-# ROW_1 = ('Login', 'Spreadsheet', 'Schedule')
+# ROW_1 = ('Login', 'Spreadsheet', 'Schedule', 'Accounts')
 # ROW_2 = ('Back',)
 entry_inline_kb = [
     [
         InlineKeyboardButton(text='👤 Login', callback_data=str(LOGIN)),
         InlineKeyboardButton(text='📊 Spreadsheet', callback_data=str(SPREADSHEET)),
         InlineKeyboardButton(text='📆 Schedule', callback_data=str(SCHEDULE)),
+        InlineKeyboardButton(text='🏦 Accounts', callback_data=str(ACCOUNTS))
     ],
     [InlineKeyboardButton(text='🚪 Exit', callback_data=str(CANCEL))]
 ]
@@ -91,12 +96,6 @@ spreadsheet_inline_kb = [
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))]
 ]
-BUTTONS = dict(
-    zip(
-       (ID, SHEET_NAME),
-       ('ID', 'Sheet name')
-    )
-)
 
 # Schedule keyboard
 schedule_inline_kb = [ 
@@ -106,6 +105,12 @@ schedule_inline_kb = [
         InlineKeyboardButton(text='Remove schedule', callback_data=str(REMOVE_SCHEDULE)),
     ],
     [InlineKeyboardButton(text='Back', callback_data=str(BACK))] 
+]
+
+# Accounts keyboard
+accounts_inline_kb = [
+    [InlineKeyboardButton(text="Add/Modify", callback_data=str(MODIFY_ACCOUNTS))],
+    [InlineKeyboardButton(text='Back', callback_data=str(BACK))]  
 ]
 
 #
@@ -280,6 +285,10 @@ def start_spreadsheet(update: Update, context: CallbackContext) -> str:
 
 def prompt_spreadsheet(update: Update, context: CallbackContext) -> str:
     """Prompt which property of a spreadsheet to set/reset"""
+    BUTTONS = {
+        ID: "ID",
+        SHEET_NAME: "Sheet name",
+    }
     query = update.callback_query
     user_data = context.user_data.get('spreadsheet')
 
@@ -310,7 +319,7 @@ def set_spreadsheet(update: Update, context: CallbackContext) -> str:
     )
     return INPUT
 
-def up_one_level(update: Update, context: CallbackContext) -> int:
+def up_one_level(update: Update, context: CallbackContext) -> str:
     """Go back/up one level"""
     update.callback_query.answer()
     return start_spreadsheet(update, context)
@@ -495,6 +504,71 @@ def remove_schedule(update: Update, context: CallbackContext) -> str:
     return INPUT
 
 #
+# Bank accounts setting
+#
+def get_accounts(update: Update, context: CallbackContext) -> str:
+    """Get the preferred bank accounts for a user"""
+    # get the 'accounts' from the user_data dictionary
+    if "accounts" not in (user_data := context.user_data):
+        user_data["accounts"] = []
+
+    # did the user already saved any accounts?
+    if (num_accounts := len(user_data["accounts"])) > 0:
+        accounts_str = "\n".join([f"  {i}\. {account.strip()}" for i, account in enumerate(user_data["accounts"], start=1)])
+        reply_msg = f"You saved *{num_accounts}* account{'s' if num_accounts > 1 else ''}:\n\n{accounts_str}"
+    else:
+        reply_msg = "You have saved *no accounts*\."
+
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text(text=reply_msg, reply_markup=InlineKeyboardMarkup(accounts_inline_kb))
+
+    return SET_ACCOUNTS
+
+def set_accounts(update: Update, context: CallbackContext) -> str:
+    """Set the preferred accounts for a user"""
+    # Either append or replace data to the accounts list. Default is replace
+    replace = True
+    accounts = context.user_data["accounts"]
+    if (query := update.callback_query) is not None:
+        query.answer()
+        query.edit_message_text(
+            "Enter your preferred accounts, *one per line* or separated *by comma*\.\n\n*Notes:*\n"
+            "  \- By default, the old accounts are *replaced*\n"
+            "  \- If the message starts with `+`, the new accounts are *added* to the list\n"
+            "  \- Type `erase`, `remove`, or `clear` to *delete all* your saved accounts"
+        )
+        return INPUT
+    elif (message := update.message) is not None:
+        text = message.text
+        if re.match(r"(remove|clear|erase)", text, re.IGNORECASE) is not None:
+            reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
+            accounts.clear()
+        else:
+            if text.startswith('+'):
+                replace = False
+                text = text[1:]
+            if ',' in text:
+                text = text.split(',')
+            else:
+                text = text.split('\n')
+            
+            # replace or append the newly inserted accounts
+            if replace:
+                accounts.clear()
+            
+            accounts.extend([s.strip() for s in text])
+
+            reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been saved\."
+            
+        message.reply_text(
+            text=reply_msg,
+            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton(text="Back", callback_data=str(BACK)))
+        )
+
+        return SET_ACCOUNTS
+
+#
 # Other functions
 #
 def cancel(update: Update, _: CallbackContext) -> str:
@@ -602,6 +676,31 @@ schedule_handler = ConversationHandler(
     persistent=False
 )
 
+# Accounts handler
+accounts_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(get_accounts, pattern=f'^{ACCOUNTS}$'),
+    ],
+    states={
+        SET_ACCOUNTS: [
+            CallbackQueryHandler(set_accounts, pattern=f'^{MODIFY_ACCOUNTS}$')
+        ],
+        INPUT: [
+            MessageHandler(Filters.text & ~Filters.command, set_accounts)
+        ],
+    },
+    fallbacks=[
+        CommandHandler('cancel', cancel),
+        CallbackQueryHandler(cancel, pattern=f'^{CANCEL}$'),
+        CallbackQueryHandler(back_to_start, pattern=f'^{BACK}$'),
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END
+    },
+)
+
 # Top-level conversation handler
 settings_handler = ConversationHandler(
         entry_points=[
@@ -612,6 +711,7 @@ settings_handler = ConversationHandler(
                 login_handler,
                 spreadsheet_handler,
                 schedule_handler,
+                accounts_handler,
                 CallbackQueryHandler(back_to_start, pattern='^' + str(END) + '$')
             ],
         },
