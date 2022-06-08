@@ -1,7 +1,7 @@
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace
 """
 Bot functions for the `/record` command
 """
-from ctypes import util
 import datetime as dtm
 import logging
 import re
@@ -16,10 +16,10 @@ from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           MessageHandler)
 
 import utils
-from constants import *
+from constants import CURRENCIES, LOG_FORMAT, LOG_LEVEL, END
 
 # Enable logging
-logging.basicConfig(format=log_format, level=log_level)
+logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # A new record's fields
@@ -61,6 +61,7 @@ RECORD_KEYS = ('date',
 #
 # A single 'Back' button
 def back_button(text: str = 'Back') -> InlineKeyboardMarkup:
+    """A generic 'Back' button to use in multiple `InlineKeyboard` obj"""
     return InlineKeyboardMarkup.from_button(InlineKeyboardButton(text=text, callback_data=str(BACK)))
 
 # Entry-point keyboard
@@ -354,7 +355,7 @@ def clear_records(update: Update, context: CallbackContext) -> str:
         else:
             raise ValueError
     except IndexError:
-        update.message.reply_text(f"⚠️ Error while trying to delete a record that does not exist\.")
+        update.message.reply_text("⚠️ Error while trying to delete a record that does not exist\.")
     except ValueError:
         update.message.reply_text("⚠️ Invalid syntax, try again\.\n\nExamples:\n"
             " \- `1-3` removes records *from* 1 *to* 3\n"

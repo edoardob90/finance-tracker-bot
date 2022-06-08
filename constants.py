@@ -1,3 +1,4 @@
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string
 """
 Constants
 """
@@ -9,8 +10,8 @@ from telegram.ext import ConversationHandler
 load_dotenv()
 
 # Logging
-log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-log_level = os.environ.get("LOG_LEVEL", "INFO")
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 # Currencies supported
 CURRENCIES = dict(
@@ -27,6 +28,9 @@ CURRENCIES = dict(
 
 # Path to Google API client secret file
 CREDS = os.environ.get("CREDS_FILE", join(dirname(__file__), "credentials.json"))
+
+# Spreadsheet scopes
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 # TODO: this is *temporary* until I have the app approved by Google
 SERVICE_ACCOUNT = bool(os.environ.get("SERVICE_ACCOUNT", False))

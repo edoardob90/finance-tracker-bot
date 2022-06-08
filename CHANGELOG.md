@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Better handling of date parsing errors
 - Add a 'Cancel' button to the calendar keyboard
 - Inline keyboard formatting
+- Code cleanup with pylint
 
 ### Documentation
 

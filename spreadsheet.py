@@ -1,13 +1,13 @@
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace
+"""
+Google Spreadsheet class
+"""
 from typing import Any, Dict, List, NoReturn, Union
 
 from gspread import Client
 from gspread import Spreadsheet as Document
 from gspread import Worksheet
 from gspread.exceptions import APIError, WorksheetNotFound
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-]
 
 class SpreadsheetError(Exception):
     """A subclass for exceptions raised by the Spreadsheet class"""
@@ -54,8 +54,8 @@ class Spreadsheet():
             raise SpreadsheetError('Spreadsheet ID is undefined.')
         try:
             doc = self._client.open_by_key(self.spreadsheet_id)
-        except APIError:
-            raise SpreadsheetError("A spreadsheet with ID '{}' was not found.".format(self.spreadsheet_id))
+        except APIError as exc:
+            raise SpreadsheetError(f"A spreadsheet with ID '{self.spreadsheet_id}' was not found.") from exc
         else:
             self._doc = doc
         return self._doc
@@ -69,10 +69,10 @@ class Spreadsheet():
         """A single sheet object of the spreadsheet"""
         try:
             sheet = self.doc.worksheet(self.sheet_name)
-        except WorksheetNotFound:
-            raise SpreadsheetError("A sheet with name '{}' does not exist".format(self.sheet_name))
-        except SpreadsheetError:
-            raise
+        except WorksheetNotFound as exc:
+            raise SpreadsheetError(f"A sheet with name '{self.sheet_name}' does not exist") from exc
+        except Exception as exc:
+            raise SpreadsheetError from exc
         else:
             self._sheet = sheet
         return self._sheet
@@ -92,6 +92,7 @@ class Spreadsheet():
 
     @property
     def permissions(self) -> Any:
+        """List the user's permissions on this spreadsheet"""
         return self.doc.list_permissions()
 
     @permissions.setter
@@ -106,7 +107,7 @@ class Spreadsheet():
         except APIError as exc:
             err = exc.response.json().get('error')
             if err and err['code'] == 403 and err['status'] == "PERMISSION_DENIED":
-                raise SpreadsheetError(f"You do not have the permissions to edit the sheet '{self.sheet_name}' in the spreadsheet with ID '{self.spreadsheet_id}'.")
+                raise SpreadsheetError(f"You do not have the permissions to edit the sheet '{self.sheet_name}' in the spreadsheet with ID '{self.spreadsheet_id}'.") from exc
         else:
             return response
 

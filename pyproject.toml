@@ -37,6 +37,7 @@ cachetools = "^4.2.2"
 python-telegram-bot = "^13.11"
 
 [tool.poetry.dev-dependencies]
+pylint = "^2.14.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

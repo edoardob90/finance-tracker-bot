@@ -1,6 +1,8 @@
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace
 """
 Utils module
 """
+import os
 import html
 import json
 import logging
@@ -24,12 +26,12 @@ from telegram import InlineKeyboardButton, ParseMode, Update
 from telegram.ext import CallbackContext
 from telegram.utils.helpers import escape_markdown as EscapeMarkdown
 
-from constants import *
-from spreadsheet import *
+from constants import CURRENCIES, LOG_LEVEL, LOG_FORMAT, END, SERVICE_ACCOUNT, SERVICE_ACCOUNT_FILE, SCOPES
+from spreadsheet import Spreadsheet, SpreadsheetError
 
 # Logging
 logging.basicConfig(
-    format=log_format, level=log_level
+    format=LOG_FORMAT, level=LOG_LEVEL,
 )
 logger = logging.getLogger(__name__)
 
@@ -223,7 +225,7 @@ def oauth(first_login: bool = False, credentials_file: str = None, token_file: s
                     if token_file is not None:
                         creds_stored = True
                         user_data['token_file'] = token_file
-                        with pathlib.Path(token_file).open('w') as token:
+                        with pathlib.Path(token_file).open('w', encoding='utf-8') as token:
                             token.write(creds.to_json())
 
                     if creds_stored:
