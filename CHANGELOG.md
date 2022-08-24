@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Add a 'Cancel' button to the calendar keyboard
 - Inline keyboard formatting
 - Code cleanup with pylint
+- Clean-up & reformat code
 
 ### Documentation
 

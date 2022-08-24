@@ -9,21 +9,26 @@ from gspread import Spreadsheet as Document
 from gspread import Worksheet
 from gspread.exceptions import APIError, WorksheetNotFound
 
+
 class SpreadsheetError(Exception):
     """A subclass for exceptions raised by the Spreadsheet class"""
 
-class Spreadsheet():
+
+class Spreadsheet:
     """A class for a Google Spreasheet object"""
-    def __init__(self, client: Client, spreadsheet_id: str = None, sheet_name: str = None):
+
+    def __init__(
+        self, client: Client, spreadsheet_id: str = None, sheet_name: str = None
+    ):
         # A valid gspread Client
         self._client = client
-        
+
         # Properties
-        self._spreadsheet_id = None # the spreadsheet ID
-        self._sheet_name = None # the sheet name
+        self._spreadsheet_id = None  # the spreadsheet ID
+        self._sheet_name = None  # the sheet name
         self._doc = None
         self._sheet = None
-        self._range = None # the table range
+        self._range = None  # the table range
 
         self.spreadsheet_id = spreadsheet_id
         self.sheet_name = sheet_name
@@ -33,7 +38,7 @@ class Spreadsheet():
     def spreadsheet_id(self) -> str:
         """Returns the spreadsheet ID"""
         return self._spreadsheet_id
-    
+
     @spreadsheet_id.setter
     def spreadsheet_id(self, id_: str) -> NoReturn:
         self._spreadsheet_id = id_
@@ -51,18 +56,22 @@ class Spreadsheet():
     def doc(self) -> Document:
         """Returns the spreadsheet document object"""
         if not self.spreadsheet_id:
-            raise SpreadsheetError('Spreadsheet ID is undefined.')
+            raise SpreadsheetError("Spreadsheet ID is undefined.")
         try:
             doc = self._client.open_by_key(self.spreadsheet_id)
         except APIError as exc:
-            raise SpreadsheetError(f"A spreadsheet with ID '{self.spreadsheet_id}' was not found.") from exc
+            raise SpreadsheetError(
+                f"A spreadsheet with ID '{self.spreadsheet_id}' was not found."
+            ) from exc
         else:
             self._doc = doc
         return self._doc
-    
+
     @doc.setter
     def doc(self, _) -> NoReturn:
-        raise SpreadsheetError('Spreadsheet document should only be set by providing the spreadsheet ID.')
+        raise SpreadsheetError(
+            "Spreadsheet document should only be set by providing the spreadsheet ID."
+        )
 
     @property
     def sheet(self) -> Worksheet:
@@ -70,7 +79,9 @@ class Spreadsheet():
         try:
             sheet = self.doc.worksheet(self.sheet_name)
         except WorksheetNotFound as exc:
-            raise SpreadsheetError(f"A sheet with name '{self.sheet_name}' does not exist") from exc
+            raise SpreadsheetError(
+                f"A sheet with name '{self.sheet_name}' does not exist"
+            ) from exc
         except Exception as exc:
             raise SpreadsheetError from exc
         else:
@@ -85,7 +96,7 @@ class Spreadsheet():
     def range(self) -> str:
         """The sheet table range in A1 notation"""
         return self._range
-    
+
     @range.setter
     def range(self, _range: str) -> NoReturn:
         self._range = _range
@@ -103,31 +114,47 @@ class Spreadsheet():
     def append_records(self, values: List[List]) -> Any:
         """Append one or more records to the spreadhseet"""
         try:
-            response = self.sheet.append_rows(values, value_input_option="USER_ENTERED", table_range=self.range)
+            response = self.sheet.append_rows(
+                values, value_input_option="USER_ENTERED", table_range=self.range
+            )
         except APIError as exc:
-            err = exc.response.json().get('error')
-            if err and err['code'] == 403 and err['status'] == "PERMISSION_DENIED":
-                raise SpreadsheetError(f"You do not have the permissions to edit the sheet '{self.sheet_name}' in the spreadsheet with ID '{self.spreadsheet_id}'.") from exc
+            err = exc.response.json().get("error")
+            if err and err["code"] == 403 and err["status"] == "PERMISSION_DENIED":
+                raise SpreadsheetError(
+                    f"You do not have the permissions to edit the sheet '{self.sheet_name}' in the spreadsheet with ID '{self.spreadsheet_id}'."
+                ) from exc
         else:
             return response
 
-    def get_records(self, sheet_name: str = None, range_: str = None, as_dict: bool = False, **kwargs) -> Union[List, List[Dict]]:
+    def get_records(
+        self,
+        sheet_name: str = None,
+        range_: str = None,
+        as_dict: bool = False,
+        **kwargs,
+    ) -> Union[List, List[Dict]]:
         """Get records from a range (A1 notation) or an entire sheet"""
         # If `sheet` is not given, check if it's already been set
         if sheet_name:
             self.sheet_name = sheet_name
-        
+
         if self.sheet_name is None:
             all_sheets_names = [str(sheet.title) for sheet in self.doc.worksheets()]
-            raise SpreadsheetError(f"Cannot get data from an unnamed sheet! Available sheets: '{', '.join(all_sheets_names)}'")
-        
+            raise SpreadsheetError(
+                f"Cannot get data from an unnamed sheet! Available sheets: '{', '.join(all_sheets_names)}'"
+            )
+
         # Set the range if given
         if range_:
             self.range = range_
-        
+
         if self.range:
             values = self.sheet.get_values(self.range)
         else:
-            values = self.sheet.get_all_records(**kwargs) if as_dict else self.sheet.get_all_values()
-    
+            values = (
+                self.sheet.get_all_records(**kwargs)
+                if as_dict
+                else self.sheet.get_all_values()
+            )
+
         return values
