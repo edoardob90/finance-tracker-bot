@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Adds a calendar keyboard
 - Add multiple quick records, one per line
 - Save preferred accounts for new records
+- Set a default currency
 
 ### Miscellaneous Tasks
 

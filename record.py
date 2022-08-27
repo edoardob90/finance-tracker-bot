@@ -1,8 +1,9 @@
-# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace,logging-fstring-interpolation
 """
 Bot functions for the `/record` command
 """
 import datetime as dtm
+from email.policy import default
 import logging
 import re
 from collections import OrderedDict
@@ -191,19 +192,27 @@ def prompt(update: Update, context: CallbackContext) -> str:
 
 def store(update: Update, context: CallbackContext) -> str:
     """Store the provided info and ask for the next"""
-    user_data = context.user_data.get("record")
-    category = user_data["choice"]
+    record_data = context.user_data.get("record")
+    category = record_data["choice"]
 
-    if update.callback_query is not None:
-        update.callback_query.answer()
-        data = update.callback_query.data
-        reply_func = update.callback_query.edit_message_text
+    if (query := update.callback_query) is not None:
+        query.answer()
+        data = query.data
+        reply_func = query.edit_message_text
     else:
         data = update.message.text
         reply_func = update.message.reply_text
 
     try:
-        user_data.update(utils.parse_data(category, data))
+        entered_data = utils.parse_data(category, data)
+        # Check if the user set a preferred currency
+        if (
+            category == "amount"
+            and (default_cur := context.user_data.get("default_cur")) is not None
+        ):
+            entered_data["currency"] = default_cur
+
+        record_data.update(entered_data)
     except ParserError:
         reply_func(f"⚠️ You entered an invalid date: '{data}'\. Please, try again\.")
         raise
@@ -211,12 +220,12 @@ def store(update: Update, context: CallbackContext) -> str:
         reply_func(f"⚠️ You entered invalid data: '{data}'\. Please, try again\.")
         raise
     else:
-        del user_data["choice"]
-        reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(user_data)}"
+        del record_data["choice"]
+        reply_text = f"Done\! *{category.capitalize()}* has been recorded\. This is the new record so far:\n{utils.data_to_str(record_data)}"
         reply_func(reply_text, reply_markup=InlineKeyboardMarkup(record_inline_kb))
 
         logger.info(
-            f"user_data: {str(user_data)}, context.user_data: {str(context.user_data)}"
+            f"user_data: {str(record_data)}, context.user_data: {str(context.user_data)}"
         )
 
     return INPUT

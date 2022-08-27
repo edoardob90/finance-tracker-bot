@@ -1,29 +1,25 @@
+# pylint: disable=invalid-name,line-too-long,anomalous-backslash-in-string,trailing-whitespace,logging-fstring-interpolation
 """
 Bot functions for `/settings` command.
 """
-from ast import Not
-import pathlib
-import logging
-import re
 import datetime as dtm
+import logging
+import pathlib
+import re
 from random import randrange
 
-from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     CallbackContext,
-    ConversationHandler,
-    CommandHandler,
     CallbackQueryHandler,
-    MessageHandler,
+    CommandHandler,
+    ConversationHandler,
     Filters,
+    MessageHandler,
 )
 
-from constants import *
 import utils
+from constants import *
 
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -59,7 +55,8 @@ logger = logging.getLogger(__name__)
     REMOVE_SCHEDULE,
     ACCOUNTS,
     MODIFY_ACCOUNTS,
-) = map(chr, range(8, 25))
+    CURRENCY,
+) = map(chr, range(8, 26))
 
 #
 # Inline Keyboards
@@ -72,7 +69,10 @@ entry_inline_kb = [
         InlineKeyboardButton(text="👤 Login", callback_data=str(LOGIN)),
         InlineKeyboardButton(text="📊 Spreadsheet", callback_data=str(SPREADSHEET)),
         InlineKeyboardButton(text="📆 Schedule", callback_data=str(SCHEDULE)),
+    ],
+    [
         InlineKeyboardButton(text="🏦 Accounts", callback_data=str(ACCOUNTS)),
+        InlineKeyboardButton(text="💶 Currency", callback_data=str(CURRENCY)),
     ],
     [InlineKeyboardButton(text="🚪 Exit", callback_data=str(CANCEL))],
 ]
@@ -182,12 +182,13 @@ After that, you can use the bot normally\. Bye 👋"""
         query.edit_message_text(text=result)
 
         return STOPPING if SERVICE_ACCOUNT else NEW_LOGIN
-    else:
-        query.edit_message_text(
-            "You already logged in\. What do you want to do?",
-            reply_markup=InlineKeyboardMarkup(edit_login_inline_kb),
-        )
-        return EDIT_LOGIN
+
+    query.edit_message_text(
+        "You already logged in\. What do you want to do?",
+        reply_markup=InlineKeyboardMarkup(edit_login_inline_kb),
+    )
+
+    return EDIT_LOGIN
 
 
 def store_auth_code(update: Update, context: CallbackContext) -> int:
@@ -593,7 +594,9 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
     """Set the preferred accounts for a user"""
     # Either append or replace data to the accounts list. Default is replace
     replace = True
+
     accounts = context.user_data["accounts"]
+
     if (query := update.callback_query) is not None:
         query.answer()
         query.edit_message_text(
@@ -603,7 +606,8 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
             "  \- Type `erase`, `remove`, or `clear` to *delete all* your saved accounts"
         )
         return INPUT
-    elif (message := update.message) is not None:
+
+    if (message := update.message) is not None:
         text = message.text
         if re.match(r"(remove|clear|erase)", text, re.IGNORECASE) is not None:
             reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
@@ -633,6 +637,64 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
         )
 
         return SET_ACCOUNTS
+
+
+#
+# Default/preferred currencies
+#
+def get_preferred_currency(update: Update, context: CallbackContext) -> str:
+    """Get the currently set preferred currency (if any)"""
+
+    if "default_cur" not in (user_data := context.user_data):
+        user_data["default_cur"] = None
+
+    currencies = set(CURRENCIES.values())
+    reply_kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(text=str(x), callback_data=str(x))
+                for x in currencies
+            ],
+            [InlineKeyboardButton(text="Reset", callback_data=str(RESET))],
+            [InlineKeyboardButton(text="Back", callback_data=str(BACK))],
+        ]
+    )
+
+    query = update.callback_query
+    reply_text = (
+        f'*{user_data["default_cur"]}* is your default currency\. Change your default currency:'
+        if user_data["default_cur"] is not None
+        else "Choose your default currency:"
+    )
+    query.answer()
+    query.edit_message_text(text=reply_text, reply_markup=reply_kb)
+
+    return INPUT
+
+
+def set_preferred_currency(update: Update, context: CallbackContext) -> str:
+    """Set a preferred currency"""
+
+    user_data = context.user_data
+    query = update.callback_query
+    query.answer()
+
+    # Set the default currency
+    if query.data == str(RESET):
+        reply_text = "Your default currency has been *reset*"
+        user_data["default_cur"] = None
+    else:
+        reply_text = f"Your default currency has been set to *{query.data}*"
+        user_data["default_cur"] = query.data
+
+    query.edit_message_text(
+        text=reply_text,
+        reply_markup=InlineKeyboardMarkup.from_button(
+            InlineKeyboardButton(text="Back", callback_data=str(BACK))
+        ),
+    )
+
+    return INPUT
 
 
 #
@@ -761,6 +823,35 @@ accounts_handler = ConversationHandler(
     },
 )
 
+# Default currency handler
+currency_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(get_preferred_currency, pattern=f"^{CURRENCY}$"),
+    ],
+    states={
+        INPUT: [
+            CallbackQueryHandler(
+                set_preferred_currency,
+                pattern="^"
+                + "$|^".join(set(CURRENCIES.values()))
+                + "$|^"
+                + str(RESET)
+                + "$",
+            ),
+        ],
+    },
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        CallbackQueryHandler(cancel, pattern=f"^{CANCEL}$"),
+        CallbackQueryHandler(back_to_start, pattern=f"^{BACK}$"),
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END,
+    },
+)
+
 # Top-level conversation handler
 settings_handler = ConversationHandler(
     entry_points=[
@@ -772,6 +863,7 @@ settings_handler = ConversationHandler(
             spreadsheet_handler,
             schedule_handler,
             accounts_handler,
+            currency_handler,
             CallbackQueryHandler(back_to_start, pattern="^" + str(END) + "$"),
         ],
     },
