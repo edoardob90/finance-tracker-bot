@@ -3,6 +3,7 @@
 Bot functions for `/settings` command.
 """
 import datetime as dtm
+from functools import partial
 import logging
 import pathlib
 import re
@@ -111,7 +112,10 @@ schedule_inline_kb = [
 
 # Accounts keyboard
 accounts_inline_kb = [
-    [InlineKeyboardButton(text="Add/Modify", callback_data=str(MODIFY_ACCOUNTS))],
+    [
+        InlineKeyboardButton(text="Add/Modify", callback_data=str(MODIFY_ACCOUNTS)),
+        InlineKeyboardButton(text="Reset", callback_data=str(RESET)),
+    ],
     [InlineKeyboardButton(text="Back", callback_data=str(BACK))],
 ]
 
@@ -339,11 +343,10 @@ def set_spreadsheet(update: Update, context: CallbackContext) -> str:
     return INPUT
 
 
-def up_one_level(update: Update, context: CallbackContext) -> str:
-    """Go back/up one level"""
-    update.callback_query.answer()
-    return start_spreadsheet(update, context)
-
+# def up_one_level(update: Update, context: CallbackContext) -> str:
+#     """Go back/up one level"""
+#     update.callback_query.answer()
+#     return start_spreadsheet(update, context)
 
 #
 # Schedule functions
@@ -599,40 +602,48 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
 
     if (query := update.callback_query) is not None:
         query.answer()
-        query.edit_message_text(
-            "Enter your preferred accounts, *one per line* or separated *by comma*\.\n\n*Notes:*\n"
-            "  \- By default, the old accounts are *replaced*\n"
-            "  \- If the message starts with `+`, the new accounts are *added* to the list\n"
-            "  \- Type `erase`, `remove`, or `clear` to *delete all* your saved accounts"
-        )
+        if query.data == str(RESET):
+            reply_kb = InlineKeyboardMarkup.from_button(
+                InlineKeyboardButton(text="Back", callback_data=str(UP_ONE_LEVEL))
+            )
+            if accounts:
+                reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
+                accounts.clear()
+            else:
+                reply_msg = "You haven't saved any account yet\."
+        else:
+            reply_kb = None
+            reply_msg = """Enter your preferred accounts, *one per line* or separated *by comma\.\n*
+    \- By default, the old accounts are *replaced*
+    \- To *add* an account to the list, prepend a `+` to the new account\(s\)
+    \- Use the `/cancel` command to stop"""
+
+        query.edit_message_text(text=reply_msg, reply_markup=reply_kb)
+
         return INPUT
 
     if (message := update.message) is not None:
         text = message.text
-        if re.match(r"(remove|clear|erase)", text, re.IGNORECASE) is not None:
-            reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
-            accounts.clear()
+        if text.startswith("+"):
+            replace = False
+            text = text[1:]
+        if "," in text:
+            text = text.split(",")
         else:
-            if text.startswith("+"):
-                replace = False
-                text = text[1:]
-            if "," in text:
-                text = text.split(",")
-            else:
-                text = text.split("\n")
+            text = text.split("\n")
 
-            # replace or append the newly inserted accounts
-            if replace:
-                accounts.clear()
+        # replace or append the newly inserted accounts
+        if replace:
+            accounts.clear()
 
-            accounts.extend([s.strip() for s in text])
+        accounts.extend([s.strip() for s in text])
 
-            reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been saved\."
+        reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been saved\."
 
         message.reply_text(
             text=reply_msg,
             reply_markup=InlineKeyboardMarkup.from_button(
-                InlineKeyboardButton(text="Back", callback_data=str(BACK))
+                InlineKeyboardButton(text="Back", callback_data=str(UP_ONE_LEVEL))
             ),
         )
 
@@ -759,7 +770,10 @@ spreadsheet_handler = ConversationHandler(
     fallbacks=[
         CommandHandler("cancel", cancel),
         CallbackQueryHandler(cancel, pattern=f"^{CANCEL}$"),
-        CallbackQueryHandler(up_one_level, pattern=f"^{UP_ONE_LEVEL}$"),
+        CallbackQueryHandler(
+            partial(utils.up_one_level, func=start_spreadsheet),
+            pattern=f"^{UP_ONE_LEVEL}$",
+        ),
         CallbackQueryHandler(back_to_start, pattern=f"^{BACK}$"),
     ],
     map_to_parent={
@@ -807,7 +821,7 @@ accounts_handler = ConversationHandler(
     ],
     states={
         SET_ACCOUNTS: [
-            CallbackQueryHandler(set_accounts, pattern=f"^{MODIFY_ACCOUNTS}$")
+            CallbackQueryHandler(set_accounts, pattern=f"^{MODIFY_ACCOUNTS}$|^{RESET}$")
         ],
         INPUT: [MessageHandler(Filters.text & ~Filters.command, set_accounts)],
     },
@@ -815,6 +829,9 @@ accounts_handler = ConversationHandler(
         CommandHandler("cancel", cancel),
         CallbackQueryHandler(cancel, pattern=f"^{CANCEL}$"),
         CallbackQueryHandler(back_to_start, pattern=f"^{BACK}$"),
+        CallbackQueryHandler(
+            partial(utils.up_one_level, func=get_accounts), pattern=f"^{UP_ONE_LEVEL}$"
+        ),
     ],
     map_to_parent={
         END: SELECTING_ACTION,

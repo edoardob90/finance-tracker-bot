@@ -12,7 +12,7 @@ import traceback
 from calendar import Calendar
 from datetime import datetime
 from functools import partial
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union, Callable
 
 from dateutil.parser import parse
 from google.auth.exceptions import RefreshError, UserAccessTokenError
@@ -43,11 +43,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Utilities
+
 # Partial function with version=2 of Markdown parsing
 escape_markdown = partial(EscapeMarkdown, version=2)
 
 
-def stop(command: str, action: str, update: Update) -> int:
+def stop(update: Update, command: str, action: str) -> int:
     """End a conversation altogether"""
     text = f"Use `/{command}` to {action} or `/help` to know what I can do for you\.\nBye 👋"
     if update.callback_query:
@@ -66,6 +68,12 @@ def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
     for job in current_jobs:
         job.schedule_removal()
     return True
+
+
+def up_one_level(update: Update, context: CallbackContext, func: Callable):
+    """Go back or up one level in a menu"""
+    update.callback_query.answer()
+    return func(update, context)
 
 
 # Error handler

@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Add multiple quick records, one per line
 - Save preferred accounts for new records
 - Set a default currency
+- Improve UI for some settings menu
 
 ### Miscellaneous Tasks
 
