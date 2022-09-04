@@ -673,7 +673,7 @@ def get_preferred_currency(update: Update, context: CallbackContext) -> str:
 
     query = update.callback_query
     reply_text = (
-        f'*{user_data["default_cur"]}* is your default currency\. Change your default currency:'
+        f'*{user_data["default_cur"]}* is your default currency\. Do you want to change it?'
         if user_data["default_cur"] is not None
         else "Choose your default currency:"
     )

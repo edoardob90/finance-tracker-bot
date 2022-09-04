@@ -207,17 +207,17 @@ def store(update: Update, context: CallbackContext) -> str:
         entered_data = utils.parse_data(category, data)
         # Check if the user set a preferred currency
         if (
-            category == "amount"
-            and (default_cur := context.user_data.get("default_cur")) is not None
+            (default_cur := context.user_data.get("default_cur")) is not None
+            and category == "amount"
+            and entered_data["currency"] == "X"
         ):
             entered_data["currency"] = default_cur
-
         record_data.update(entered_data)
     except ParserError:
-        reply_func(f"⚠️ You entered an invalid date: '{data}'\. Please, try again\.")
+        reply_func(f"⚠️ Date entered is *invalid*: '{data}'\. Please, try again\.")
         raise
     except:
-        reply_func(f"⚠️ You entered invalid data: '{data}'\. Please, try again\.")
+        reply_func(f"⚠️ Data entered are *invalid*: '{data}'\. Please, try again\.")
         raise
     else:
         del record_data["choice"]
