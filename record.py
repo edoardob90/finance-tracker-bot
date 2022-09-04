@@ -3,7 +3,6 @@
 Bot functions for the `/record` command
 """
 import datetime as dtm
-from email.policy import default
 import logging
 import re
 from collections import OrderedDict
