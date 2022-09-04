@@ -313,6 +313,12 @@ def quick_save(update: Update, context: CallbackContext) -> str:
         _record = OrderedDict.fromkeys(RECORD_KEYS)
         for key, val in zip(("date", "reason", "amount", "account"), record):
             _record.update(utils.parse_data(key, val))
+            if (
+                key == "amount"
+                and _record["currency"] == "X"
+                and (default_cur := context.user_data.get("default_cur")) is not None
+            ):
+                _record["currency"] = default_cur
         # add timestamp
         _record["recorded_on"] = dtm.datetime.now().strftime("%d-%m-%Y, %H:%M")
         # append the record
