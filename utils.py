@@ -130,18 +130,15 @@ def currency_parser(number_str: str) -> Tuple[float, str]:
     cur_symbol = cur_str.group(1) if cur_str else "X"
 
     # Remove any non-numeric char
-    number_str = re.sub(r"[^-0-9,.]", "", number_str)
-    # Remove thousand separator: `,` or `.`
-    number_str = re.sub(r"[,.]", "", number_str[:-3]) + number_str[-3:]
+    number_str = re.sub(r"[^-0-9,.']", "", number_str)
+    # Remove thousand separator: `,`, `.`, or `'`
+    number_str = re.sub(r"[,.']", "", number_str[:-3]) + number_str[-3:]
 
-    if "." in number_str[-3:]:
-        num = float(number_str)
-    elif "," in number_str[-3:]:
-        num = float(number_str.replace(",", "."))
-    else:
-        num = float(number_str)
+    if "," in number_str[-3:]:
+        number_str = number_str.replace(",", ".")
+    amount = float(number_str)
 
-    return round(num, 2), CURRENCIES.get(cur_symbol.upper(), "X")
+    return round(amount, 2), CURRENCIES.get(cur_symbol.upper(), "X")
 
 
 def parse_data(key: str, value: str) -> Dict:
