@@ -8,6 +8,7 @@ import os
 import re
 from collections import OrderedDict
 from copy import deepcopy
+from dotenv import load_dotenv
 
 from dateutil.parser import ParserError
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -23,8 +24,11 @@ from telegram.ext import (
 import utils
 from constants import CURRENCIES, LOG_FORMAT, RECORD_KEYS
 
-# Enable logging
+# Env varialles
+load_dotenv()
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+# Enable logging
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 

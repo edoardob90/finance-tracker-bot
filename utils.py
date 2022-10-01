@@ -13,6 +13,7 @@ from calendar import Calendar
 from datetime import datetime
 from functools import partial
 from typing import Any, Callable, Dict, Tuple, Union
+from dotenv import load_dotenv
 
 from dateutil.parser import parse
 from google.auth.exceptions import RefreshError, UserAccessTokenError
@@ -29,6 +30,7 @@ from constants import CURRENCIES, LOG_FORMAT, SCOPES
 from spreadsheet import Spreadsheet, SpreadsheetError
 
 # Env variables
+load_dotenv()
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 SERVICE_ACCOUNT = bool(os.environ.get("SERVICE_ACCOUNT", False))
 SERVICE_ACCOUNT_FILE = os.environ.get(

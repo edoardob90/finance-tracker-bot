@@ -9,6 +9,7 @@ import pathlib
 import re
 import os
 from random import randrange
+from dotenv import load_dotenv
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -24,6 +25,7 @@ import utils
 from constants import LOG_FORMAT, CURRENCIES
 
 # Env variables
+load_dotenv()
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 CREDS = os.environ.get(
     "CREDS_FILE", os.path.join(os.path.dirname(__file__), "credentials.json")

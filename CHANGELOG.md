@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - User-entered currency overrides the default
 - Default currency override in quick records
 - Remove spurious auto-import
+- Missing import
 
 ### Documentation
 
