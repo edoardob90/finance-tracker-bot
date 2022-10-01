@@ -4,12 +4,12 @@ Bot functions for the `/record` command
 """
 import datetime as dtm
 import logging
+import os
 import re
 from collections import OrderedDict
 from copy import deepcopy
 
 from dateutil.parser import ParserError
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     CallbackContext,
@@ -21,13 +21,15 @@ from telegram.ext import (
 )
 
 import utils
-from constants import RECORD_KEYS, CURRENCIES, LOG_FORMAT, LOG_LEVEL, END
+from constants import CURRENCIES, LOG_FORMAT, RECORD_KEYS
 
 # Enable logging
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # State definitions
+END = ConversationHandler.END
 (
     SELECTING_ACTION,
     INPUT,

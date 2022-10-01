@@ -12,7 +12,7 @@ import traceback
 from calendar import Calendar
 from datetime import datetime
 from functools import partial
-from typing import Any, Dict, Tuple, Union, Callable
+from typing import Any, Callable, Dict, Tuple, Union
 
 from dateutil.parser import parse
 from google.auth.exceptions import RefreshError, UserAccessTokenError
@@ -22,19 +22,19 @@ from google.oauth2.service_account import Credentials as ServiceAccountCredentia
 from google_auth_oauthlib.flow import Flow
 from gspread import Client
 from telegram import InlineKeyboardButton, ParseMode, Update
-from telegram.ext import CallbackContext
+from telegram.ext import CallbackContext, ConversationHandler
 from telegram.utils.helpers import escape_markdown as EscapeMarkdown
 
-from constants import (
-    CURRENCIES,
-    END,
-    LOG_FORMAT,
-    LOG_LEVEL,
-    SCOPES,
-    SERVICE_ACCOUNT,
-    SERVICE_ACCOUNT_FILE,
-)
+from constants import CURRENCIES, LOG_FORMAT, SCOPES
 from spreadsheet import Spreadsheet, SpreadsheetError
+
+# Env variables
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+SERVICE_ACCOUNT = bool(os.environ.get("SERVICE_ACCOUNT", False))
+SERVICE_ACCOUNT_FILE = os.environ.get(
+    "SERVICE_ACCOUNT_FILE",
+    os.path.join(os.path.dirname(__file__), "service_account.json"),
+)
 
 # Logging
 logging.basicConfig(
@@ -57,7 +57,7 @@ def stop(update: Update, command: str, action: str) -> int:
         update.callback_query.edit_message_text(text=text)
     else:
         update.message.reply_text(text=text)
-    return END
+    return ConversationHandler.END
 
 
 def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
@@ -384,7 +384,7 @@ def add_to_spreadsheet(context: CallbackContext) -> None:
             text="⚠️ Error while refreshing your credentials\. You should logout and login again\. Go to `/settings`, then *Login*, and then click *Logout*\."
         )
         return None
-    except:
+    except Exception:
         send_message(
             text="⚠️ An error occurred\. Please, contact the developer to find a solution\. Sorry 😞"
         )

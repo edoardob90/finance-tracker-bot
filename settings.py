@@ -7,6 +7,7 @@ from functools import partial
 import logging
 import pathlib
 import re
+import os
 from random import randrange
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -20,12 +21,28 @@ from telegram.ext import (
 )
 
 import utils
-from constants import *
+from constants import LOG_FORMAT, CURRENCIES
 
+# Env variables
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+CREDS = os.environ.get(
+    "CREDS_FILE", os.path.join(os.path.dirname(__file__), "credentials.json")
+)
+SERVICE_ACCOUNT = bool(os.environ.get("SERVICE_ACCOUNT", False))
+SERVICE_ACCOUNT_FILE = os.environ.get(
+    "SERVICE_ACCOUNT_FILE",
+    os.path.join(os.path.dirname(__file__), "service_account.json"),
+)
+DATA_DIR = os.environ.get(
+    "DATA_DIR", os.path.join(os.path.dirname(__file__), "storage")
+)
+
+# Logging
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # State definitions
+END = ConversationHandler.END
 (
     SELECTING_ACTION,
     NEW_LOGIN,
@@ -154,6 +171,8 @@ def start_login(update: Update, context: CallbackContext) -> str:
 
     auth_data = user_data.get("auth")
 
+    # Create the storage directory
+    os.makedirs(DATA_DIR, exist_ok=True)
     # Each user must have a unique token file
     if "token_file" not in auth_data:
         auth_data["token_file"] = f"{DATA_DIR}/auth_{str(query.from_user.id)}.json"

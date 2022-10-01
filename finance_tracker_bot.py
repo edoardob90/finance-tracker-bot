@@ -1,29 +1,36 @@
 #!/usr/bin/env python
-# pylint: disable=C0116,W0613
-import os
+# pylint: disable=C0116,W0613,anomalous-backslash-in-string,line-too-long
+"""
+Main module
+"""
 import logging
-import pytz
-from telegram import (
-    Update,
-    ParseMode,
-)
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    CallbackContext,
-    Defaults,
-)
-from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
-from ptbcontrib.postgres_persistence import PostgresPersistence
+import os
 
-from constants import *
-import utils
+import pytz
+from dotenv import load_dotenv
+from ptbcontrib.postgres_persistence import PostgresPersistence
+from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
+from telegram import ParseMode, Update
+from telegram.ext import CallbackContext, CommandHandler, Defaults, Updater
+
 import record
 import settings
+import utils
+from constants import LOG_FORMAT
+
+# Load the .env file
+load_dotenv()
 
 # Logging
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
+
+# Variables related to the getUpdates mechanism: 'polling' (default) or 'webhook'
+MODE = os.environ.get("MODE", "polling")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", None)
+PORT = int(os.environ.get("PORT", "5000"))
+LISTEN_URL = os.environ.get("LISTEN_URL", "127.0.0.1")
 
 
 def start(update: Update, context: CallbackContext) -> None:
@@ -78,21 +85,21 @@ def main() -> None:
     """Create and run the bot"""
 
     # Bot's token
-    TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not TOKEN:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
         raise RuntimeError("Telegram bot token is required!")
 
     # Set up the connection with the Postgres database
-    DB_NAME = os.environ.get("DB_NAME")
-    DB_USER = os.environ.get("DB_USER")
-    DB_PASS = os.environ.get("DB_PASS")
-    if not (DB_NAME and DB_USER and DB_PASS):
+    db_name = os.environ.get("DB_NAME")
+    db_user = os.environ.get("DB_USER")
+    db_pass = os.environ.get("DB_PASS")
+    if not (db_name and db_user and db_pass):
         raise RuntimeError("Either 'DB_NAME', 'DB_PASS', or 'DB_USER' are missing!")
-    DB_URI = f"postgresql://{DB_USER}:{DB_PASS}@localhost:5432/{DB_NAME}"
+    db_uri = f"postgresql://{db_user}:{db_pass}@localhost:5432/{db_name}"
 
     # Setup the persistence class
     persistence = PostgresPersistence(
-        url=DB_URI, store_chat_data=False, store_bot_data=False
+        url=db_uri, store_chat_data=False, store_bot_data=False
     )
     # persistence = PicklePersistence(
     #   filename=os.path.join(DATA_DIR, 'finance_tracker'),
@@ -107,13 +114,13 @@ def main() -> None:
     )
 
     # Create an Updater
-    updater = Updater(TOKEN, persistence=persistence, defaults=defaults)
+    updater = Updater(token, persistence=persistence, defaults=defaults)
 
     # Get a dispatcher to register handlers
     dispatcher = updater.dispatcher
     # Add the Postgres jobstore
     dispatcher.job_queue.scheduler.add_jobstore(
-        PTBSQLAlchemyJobStore(dispatcher=dispatcher, url=DB_URI)
+        PTBSQLAlchemyJobStore(dispatcher=dispatcher, url=db_uri)
     )
 
     # A couple of helpers handlers
@@ -139,8 +146,8 @@ def main() -> None:
         updater.start_webhook(
             listen=LISTEN_URL,
             port=PORT,
-            url_path=TOKEN,
-            webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
+            url_path=token,
+            webhook_url=f"{WEBHOOK_URL}/{token}",
         )
     else:
         updater.start_polling(poll_interval=0.5)
