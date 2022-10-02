@@ -17,8 +17,8 @@ CURRENCIES = dict(
         ("U", "USD"),
         ("$", "USD"),
         ("C", "CHF"),
-        ("G", "GPB"),
-        ("£", "GPB"),
+        ("G", "GBP"),
+        ("£", "GBP"),
     )
 )
 

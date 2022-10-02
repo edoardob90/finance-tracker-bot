@@ -131,7 +131,7 @@ def new_record(update: Update, context: CallbackContext) -> str:
     update.callback_query.answer()
     update.callback_query.edit_message_text(
         "Enter the detail of the new expense/income record\.\n\n"
-        f"Supported currencies: '{', '.join(set(CURRENCIES.values()))}'\. You can type a single letter \(case *insensitive*\) or the symbol: E or € \= EUR, U or $ \= USD, C \= CHF\.",
+        f"Supported currencies: *{', '.join(set(CURRENCIES.values()))}*\. You can type a single letter \(case *insensitive*\) or the symbol\. Example: E or € \= EUR\.",
         reply_markup=InlineKeyboardMarkup(record_inline_kb),
     )
 

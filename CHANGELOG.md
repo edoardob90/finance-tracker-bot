@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Default currency override in quick records
 - Remove spurious auto-import
 - Missing import
+- Typo in currencies dict
 
 ### Documentation
 
