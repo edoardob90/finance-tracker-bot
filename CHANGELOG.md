@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.
 
 - Add git-cliff config file
 - Ignore JetBrains editor dir
+- Print help for not implemented commands
 
 ### Refactor
 
