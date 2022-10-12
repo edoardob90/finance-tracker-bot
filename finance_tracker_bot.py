@@ -16,6 +16,7 @@ from telegram.ext import CallbackContext, CommandHandler, Defaults, Updater
 import record
 import settings
 import utils
+import summary
 from constants import LOG_FORMAT
 
 # Load the .env file
@@ -136,7 +137,8 @@ def main() -> None:
     dispatcher.add_handler(settings.settings_handler)
 
     # Register the `/summary` conversation handler
-    # TODO: to be implemented
+    # TODO: to be implemented. This prints an help message only
+    dispatcher.add_handler(CommandHandler("summary", summary.not_implemented))
 
     # Error handler
     dispatcher.add_error_handler(utils.error_handler)
