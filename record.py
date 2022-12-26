@@ -167,10 +167,13 @@ def prompt(update: Update, context: CallbackContext) -> str:
 
     if user_data["choice"] == "date":
         reply_kb = InlineKeyboardMarkup(calendar_keyboard)
-    elif user_data["choice"] == "account" and (
-        accounts := context.user_data.get("accounts")
+    elif (
+        user_data["choice"] == "account"
+        and (prefs := context.user_data.get("accounts"))
+    ) or (
+        user_data["choice"] == "reason"
+        and (prefs := context.user_data.get("categories"))
     ):
-        # Inline keyboard for the preferred accounts. Each row has max 3 buttons for readability
         reply_kb = InlineKeyboardMarkup(
             [
                 list(
@@ -178,15 +181,15 @@ def prompt(update: Update, context: CallbackContext) -> str:
                         lambda y: InlineKeyboardButton(
                             text=str(y), callback_data=str(y)
                         ),
-                        accounts[x : x + 3],
+                        prefs[x : x + 3],
                     )
                 )
-                for x in range(0, len(accounts), 3)
+                for x in range(0, len(prefs), 3)
             ]
         )
 
     reply_msg = (
-        "Enter the *Date* of the new record \(✅ \= date is *today*\) "
+        "Choose a *Date* of the new record \(✅ \= date is *today*\) "
         if user_data["choice"] == "date"
         else f"Enter the *{choice}* of the new record"
     )
@@ -217,7 +220,10 @@ def store(update: Update, context: CallbackContext) -> str:
             and entered_data["currency"] == "X"
         ):
             entered_data["currency"] = default_cur
+
+        # Update the current record
         record_data.update(entered_data)
+
     except ParserError:
         reply_func(f"⚠️ Date entered is *invalid*: '{data}'\. Please, try again\.")
         raise

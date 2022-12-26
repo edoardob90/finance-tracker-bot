@@ -32,12 +32,14 @@ All notable changes to this project will be documented in this file.
 - Save preferred accounts for new records
 - Set a default currency
 - Improve UI for some settings menu
+- Add predefined record categories
 
 ### Miscellaneous Tasks
 
 - Add git-cliff config file
 - Ignore JetBrains editor dir
 - Print help for not implemented commands
+- Update CHANGELOG
 
 ### Refactor
 

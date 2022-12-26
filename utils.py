@@ -109,8 +109,6 @@ def error_handler(update: Update, context: CallbackContext) -> None:
             chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML
         )
 
-    return None
-
 
 #
 # Record

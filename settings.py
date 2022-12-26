@@ -53,7 +53,7 @@ END = ConversationHandler.END
     REPLY,
     INPUT,
     STOPPING,
-    SET_ACCOUNTS,
+    SET_PREFS,
 ) = map(chr, range(8))
 
 # Constants for CallbackQuery data
@@ -73,10 +73,18 @@ END = ConversationHandler.END
     DEFAULT_SCHEDULE,
     CUSTOM_SCHEDULE,
     REMOVE_SCHEDULE,
-    ACCOUNTS,
-    MODIFY_ACCOUNTS,
+    PREFS,
+    MODIFY_PREFS,
     CURRENCY,
-) = map(chr, range(8, 26))
+    ACCOUNTS,
+    CATEGORIES,
+) = map(chr, range(8, 28))
+
+# User preferences
+USER_PREFS = {
+    "accounts": ["account", "accounts"],
+    "categories": ["category", "categories"],
+}
 
 #
 # Inline Keyboards
@@ -91,6 +99,7 @@ entry_inline_kb = [
         InlineKeyboardButton(text="📆 Schedule", callback_data=str(SCHEDULE)),
     ],
     [
+        InlineKeyboardButton(text="🏷️ Categories", callback_data=str(CATEGORIES)),
         InlineKeyboardButton(text="🏦 Accounts", callback_data=str(ACCOUNTS)),
         InlineKeyboardButton(text="💶 Currency", callback_data=str(CURRENCY)),
     ],
@@ -129,10 +138,10 @@ schedule_inline_kb = [
     [InlineKeyboardButton(text="Back", callback_data=str(BACK))],
 ]
 
-# Accounts keyboard
-accounts_inline_kb = [
+# User preferences keyboard
+prefs_inline_kb = [
     [
-        InlineKeyboardButton(text="Add/Modify", callback_data=str(MODIFY_ACCOUNTS)),
+        InlineKeyboardButton(text="Add/Modify", callback_data=str(MODIFY_PREFS)),
         InlineKeyboardButton(text="Reset", callback_data=str(RESET)),
     ],
     [InlineKeyboardButton(text="Back", callback_data=str(BACK))],
@@ -364,11 +373,6 @@ def set_spreadsheet(update: Update, context: CallbackContext) -> str:
     return INPUT
 
 
-# def up_one_level(update: Update, context: CallbackContext) -> str:
-#     """Go back/up one level"""
-#     update.callback_query.answer()
-#     return start_spreadsheet(update, context)
-
 #
 # Schedule functions
 #
@@ -547,17 +551,17 @@ def set_custom_schedule(update: Update, context: CallbackContext) -> str:
     if schedule_is_valid:
         update.message.reply_text(f"Your data will be appended {when}\.\nBye 👋")
         return STOPPING
-    else:
-        update.message.reply_text(
-            "⚠️ You entered an invalid time specification\. Try again or use `/cancel` to stop\.\n"
-            "You can use the following time specifications:\n"
-            "\- `now`: immediately\n"
-            "\- `SS`: within `SS` seconds from now\n"
-            "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
-            "\- `d\[aily\] HH:MM`: every day at the specified time\n"
-            "\- `m\[onthly\] DD HH:MM`: every month at the specified day \(`DD`\) and time \(`HH:MM`\)\n"
-        )
-        return INPUT
+
+    update.message.reply_text(
+        "⚠️ You entered an invalid time specification\. Try again or use `/cancel` to stop\.\n"
+        "You can use the following time specifications:\n"
+        "\- `now`: immediately\n"
+        "\- `SS`: within `SS` seconds from now\n"
+        "\- `HH:MM`: today *only* at the specified time \(or tomorrow if time has already passed\)\n"
+        "\- `d\[aily\] HH:MM`: every day at the specified time\n"
+        "\- `m\[onthly\] DD HH:MM`: every month at the specified day \(`DD`\) and time \(`HH:MM`\)\n"
+    )
+    return INPUT
 
 
 def remove_schedule(update: Update, context: CallbackContext) -> str:
@@ -585,41 +589,37 @@ def remove_schedule(update: Update, context: CallbackContext) -> str:
 
 
 #
-# Bank accounts setting
+# Set/get user prefs
 #
-def get_accounts(update: Update, context: CallbackContext) -> str:
-    """Get the preferred bank accounts for a user"""
-    # get the 'accounts' from the user_data dictionary
-    if "accounts" not in (user_data := context.user_data):
-        user_data["accounts"] = []
+def get_user_pref(update: Update, context: CallbackContext, pref: str):
+    """Get a user preference"""
+    if pref not in (user_data := context.user_data):
+        user_data[pref] = []
 
-    # did the user already saved any accounts?
-    if (num_accounts := len(user_data["accounts"])) > 0:
-        accounts_str = "\n".join(
+    if (num_prefs := len(user_data[pref])) > 0:
+        prefs_str = "\n".join(
             [
-                f"  {i}\. {account.strip()}"
-                for i, account in enumerate(user_data["accounts"], start=1)
+                f"  {i}\. {pref_str.strip()}"
+                for i, pref_str in enumerate(user_data[pref], start=1)
             ]
         )
-        reply_msg = f"You saved *{num_accounts}* account{'s' if num_accounts > 1 else ''}:\n\n{accounts_str}"
+        reply_msg = f"You saved *{num_prefs}* {USER_PREFS[pref][1 if num_prefs > 1 else 0]}:\n\n{prefs_str}"
     else:
-        reply_msg = "You have saved *no accounts*\."
+        reply_msg = f"You have saved *no {pref}s*\."
 
     query = update.callback_query
     query.answer()
     query.edit_message_text(
-        text=reply_msg, reply_markup=InlineKeyboardMarkup(accounts_inline_kb)
+        text=reply_msg, reply_markup=InlineKeyboardMarkup(prefs_inline_kb)
     )
 
-    return SET_ACCOUNTS
+    return SET_PREFS
 
 
-def set_accounts(update: Update, context: CallbackContext) -> str:
-    """Set the preferred accounts for a user"""
-    # Either append or replace data to the accounts list. Default is replace
-    replace = True
-
-    accounts = context.user_data["accounts"]
+def set_user_pref(update: Update, context: CallbackContext, pref: str):
+    """ "Set a user preference"""
+    replace = True  # by default, replace preference value (or list)
+    prefs = context.user_data[pref]
 
     if (query := update.callback_query) is not None:
         query.answer()
@@ -627,27 +627,26 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
             reply_kb = InlineKeyboardMarkup.from_button(
                 InlineKeyboardButton(text="Back", callback_data=str(UP_ONE_LEVEL))
             )
-            if accounts:
-                reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
-                accounts.clear()
+            if prefs:
+                reply_msg = f"*{len(prefs)}* {USER_PREFS[pref][1 if len(prefs) > 1 else 0]} been removed\."
+                prefs.clear()
             else:
-                reply_msg = "You haven't saved any account yet\."
+                reply_msg = f"You haven't saved any {pref} yet\."
         else:
             reply_kb = None
-            reply_msg = """Enter your preferred accounts, *one per line* or separated *by comma\.\n*
-    \- By default, the old accounts are *replaced*
-    \- To *add* an account to the list, prepend a `+` to the new account\(s\)
+            reply_msg = f"""Enter your preferred {pref}s, *one per line* or separated *by comma\.\n*
+    \- By default, the old values are *replaced*
+    \- To *add* a value to the list, prepend a `+`
     \- Use the `/cancel` command to stop"""
 
         query.edit_message_text(text=reply_msg, reply_markup=reply_kb)
 
-        return INPUT
+        state = INPUT
 
-    if (message := update.message) is not None:
-        text = message.text
-        if text.startswith("+"):
+    elif (message := update.message) is not None:
+        if (text := message.text).startswith("+"):
             replace = False
-            text = text[1:]
+            text = text[1:].lstrip()
         if "," in text:
             text = text.split(",")
         else:
@@ -655,11 +654,11 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
 
         # replace or append the newly inserted accounts
         if replace:
-            accounts.clear()
+            prefs.clear()
 
-        accounts.extend([s.strip() for s in text])
+        prefs.extend([s.strip() for s in text])
 
-        reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been saved\."
+        reply_msg = f"*{len(prefs)}* {USER_PREFS[pref][1 if len(prefs) > 1 else 0]} been saved\."
 
         message.reply_text(
             text=reply_msg,
@@ -668,7 +667,95 @@ def set_accounts(update: Update, context: CallbackContext) -> str:
             ),
         )
 
-        return SET_ACCOUNTS
+        state = SET_PREFS
+
+    return state
+
+
+#
+# Bank accounts setting
+#
+# def get_accounts(update: Update, context: CallbackContext) -> str:
+#     """Get the preferred bank accounts for a user"""
+#     # get the 'accounts' from the user_data dictionary
+#     if "accounts" not in (user_data := context.user_data):
+#         user_data["accounts"] = []
+
+#     # did the user already saved any accounts?
+#     if (num_accounts := len(user_data["accounts"])) > 0:
+#         accounts_str = "\n".join(
+#             [
+#                 f"  {i}\. {account.strip()}"
+#                 for i, account in enumerate(user_data["accounts"], start=1)
+#             ]
+#         )
+#         reply_msg = f"You saved *{num_accounts}* account{'s' if num_accounts > 1 else ''}:\n\n{accounts_str}"
+#     else:
+#         reply_msg = "You have saved *no accounts*\."
+
+#     query = update.callback_query
+#     query.answer()
+#     query.edit_message_text(
+#         text=reply_msg, reply_markup=InlineKeyboardMarkup(accounts_inline_kb)
+#     )
+
+#     return SET_ACCOUNTS
+
+
+# def set_accounts(update: Update, context: CallbackContext) -> str:
+#     """Set the preferred accounts for a user"""
+#     # Either append or replace data to the accounts list. Default is replace
+#     replace = True  # by default, replace accounts
+#     state = INPUT  # default return
+#     accounts = context.user_data["accounts"]
+
+#     if (query := update.callback_query) is not None:
+#         query.answer()
+#         if query.data == str(RESET):
+#             reply_kb = InlineKeyboardMarkup.from_button(
+#                 InlineKeyboardButton(text="Back", callback_data=str(UP_ONE_LEVEL))
+#             )
+#             if accounts:
+#                 reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been removed\."
+#                 accounts.clear()
+#             else:
+#                 reply_msg = "You haven't saved any account yet\."
+#         else:
+#             reply_kb = None
+#             reply_msg = """Enter your preferred accounts, *one per line* or separated *by comma\.\n*
+#     \- By default, the old accounts are *replaced*
+#     \- To *add* an account to the list, prepend a `+` to the new account\(s\)
+#     \- Use the `/cancel` command to stop"""
+
+#         query.edit_message_text(text=reply_msg, reply_markup=reply_kb)
+
+#     elif (message := update.message) is not None:
+#         if (text := message.text).startswith("+"):
+#             replace = False
+#             text = text[1:].lstrip()
+#         if "," in text:
+#             text = text.split(",")
+#         else:
+#             text = text.split("\n")
+
+#         # replace or append the newly inserted accounts
+#         if replace:
+#             accounts.clear()
+
+#         accounts.extend([s.strip() for s in text])
+
+#         reply_msg = f"*{len(accounts)}* account{'s have' if len(accounts) > 1 else ' has'} been saved\."
+
+#         message.reply_text(
+#             text=reply_msg,
+#             reply_markup=InlineKeyboardMarkup.from_button(
+#                 InlineKeyboardButton(text="Back", callback_data=str(UP_ONE_LEVEL))
+#             ),
+#         )
+
+#         state = SET_ACCOUNTS
+
+#     return state
 
 
 #
@@ -836,13 +923,15 @@ schedule_handler = ConversationHandler(
 )
 
 # Accounts handler
+get_accounts = partial(get_user_pref, pref="accounts")
+set_accounts = partial(set_user_pref, pref="accounts")
 accounts_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(get_accounts, pattern=f"^{ACCOUNTS}$"),
     ],
     states={
-        SET_ACCOUNTS: [
-            CallbackQueryHandler(set_accounts, pattern=f"^{MODIFY_ACCOUNTS}$|^{RESET}$")
+        SET_PREFS: [
+            CallbackQueryHandler(set_accounts, pattern=f"^{MODIFY_PREFS}$|^{RESET}$")
         ],
         INPUT: [MessageHandler(Filters.text & ~Filters.command, set_accounts)],
     },
@@ -852,6 +941,35 @@ accounts_handler = ConversationHandler(
         CallbackQueryHandler(back_to_start, pattern=f"^{BACK}$"),
         CallbackQueryHandler(
             partial(utils.up_one_level, func=get_accounts), pattern=f"^{UP_ONE_LEVEL}$"
+        ),
+    ],
+    map_to_parent={
+        END: SELECTING_ACTION,
+        SELECTING_ACTION: SELECTING_ACTION,
+        STOPPING: END,
+    },
+)
+
+# Categories handler
+get_categories = partial(get_user_pref, pref="categories")
+set_categories = partial(set_user_pref, pref="categories")
+categories_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(get_categories, pattern=f"^{CATEGORIES}$"),
+    ],
+    states={
+        SET_PREFS: [
+            CallbackQueryHandler(set_categories, pattern=f"^{MODIFY_PREFS}$|^{RESET}$")
+        ],
+        INPUT: [MessageHandler(Filters.text & ~Filters.command, set_categories)],
+    },
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        CallbackQueryHandler(cancel, pattern=f"^{CANCEL}$"),
+        CallbackQueryHandler(back_to_start, pattern=f"^{BACK}$"),
+        CallbackQueryHandler(
+            partial(utils.up_one_level, func=get_categories),
+            pattern=f"^{UP_ONE_LEVEL}$",
         ),
     ],
     map_to_parent={
@@ -900,6 +1018,7 @@ settings_handler = ConversationHandler(
             login_handler,
             spreadsheet_handler,
             schedule_handler,
+            categories_handler,
             accounts_handler,
             currency_handler,
             CallbackQueryHandler(back_to_start, pattern="^" + str(END) + "$"),
