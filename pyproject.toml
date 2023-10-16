@@ -5,7 +5,7 @@ description = "A Telegram bot to manage your personal finances"
 authors = ["edoardob90 <edoardob90@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.9.4"
+python = "^3.11"
 certifi = "^2021.10.8"
 charset-normalizer = "^2.0.12"
 google-auth = "^2.6.3"
