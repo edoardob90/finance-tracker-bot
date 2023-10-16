@@ -503,35 +503,6 @@ docs = ["furo (>=2023.7.26)", "proselint (>=0.13)", "sphinx (>=7.1.1)", "sphinx-
 test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=7.4)", "pytest-cov (>=4.1)", "pytest-mock (>=3.11.1)"]
 
 [[package]]
-name = "ptbcontrib"
-version = "0.0.0"
-description = "Contrib package for the python-telegram-bot library"
-optional = false
-python-versions = "*"
-files = []
-develop = false
-
-[package.dependencies]
-python-telegram-bot = "*"
-
-[package.extras]
-extract-urls = ["python-telegram-bot (>=12.0)"]
-get-chat-link = ["python-telegram-bot (>=13.4)"]
-longbotcommand = ["python-telegram-bot (>=13.0)"]
-postgres-persistence = ["SQLAlchemy", "python-telegram-bot (>=12.0)"]
-ptb-sqlalchemy-jobstore = ["SQLAlchemy", "python-telegram-bot (>=13.0)"]
-reply-to-message-filter = ["python-telegram-bot (>=13.0)"]
-roles = ["python-telegram-bot (==13.6)"]
-send-by-kwargs = ["python-telegram-bot (>=12.0)"]
-username-to-chat-api = ["python-telegram-bot (>=13.0)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/python-telegram-bot/ptbcontrib.git"
-reference = "907070d129b7cf80b0236d72fb498667b5b22b63"
-resolved_reference = "907070d129b7cf80b0236d72fb498667b5b22b63"
-
-[[package]]
 name = "pyasn1"
 version = "0.4.8"
 description = "ASN.1 types and codecs"
@@ -1010,4 +981,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "53d7688e39ecb87f4686e81dedd4879f8f6102eaae8bb03c8486e67cc8e2801b"
+content-hash = "4a5b77ab70d2697d289460b2cd6008ce90fd261fbdd92c12eb9f10cbb4cd53dd"

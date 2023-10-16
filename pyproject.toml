@@ -16,7 +16,6 @@ idna = "^3.3"
 numpy = "^1.22.3"
 oauthlib = "^3.2.0"
 pandas = "^1.4.2"
-ptbcontrib = {git = "https://github.com/python-telegram-bot/ptbcontrib.git", rev = "907070d129b7cf80b0236d72fb498667b5b22b63"}
 pyasn1 = "^0.4.8"
 pyasn1-modules = "^0.2.8"
 python-dateutil = "^2.8.2"
