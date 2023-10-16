@@ -5,18 +5,25 @@ Main module
 """
 import logging
 import os
+import pathlib as pl
 
 import pytz
 from dotenv import load_dotenv
 from ptbcontrib.postgres_persistence import PostgresPersistence
 from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
 from telegram import ParseMode, Update
-from telegram.ext import CallbackContext, CommandHandler, Defaults, Updater
+from telegram.ext import (
+    CallbackContext,
+    CommandHandler,
+    Defaults,
+    PicklePersistence,
+    Updater,
+)
 
 import record
 import settings
-import utils
 import summary
+import utils
 from constants import LOG_FORMAT
 
 # Load the .env file
@@ -94,20 +101,27 @@ def main() -> None:
     db_name = os.environ.get("DB_NAME")
     db_user = os.environ.get("DB_USER")
     db_pass = os.environ.get("DB_PASS")
+
     if not (db_name and db_user and db_pass):
         raise RuntimeError("Either 'DB_NAME', 'DB_PASS', or 'DB_USER' are missing!")
+
     db_uri = f"postgresql://{db_user}:{db_pass}@localhost:5432/{db_name}"
 
     # Setup the persistence class
-    persistence = PostgresPersistence(
-        url=db_uri, store_chat_data=False, store_bot_data=False
-    )
-    # persistence = PicklePersistence(
-    #   filename=os.path.join(DATA_DIR, 'finance_tracker'),
-    #   single_file=False,
-    #   store_chat_data=False,
-    #   store_bot_data=False
+
+    # PostgresPersistence requires a Postgres database
+    # persistence = PostgresPersistence(
+    #     url=db_uri, store_chat_data=False, store_bot_data=False
     # )
+
+    persistence = PicklePersistence(
+        filename=pl.Path.cwd()
+        / os.environ.get("DATA_DIR", "storage")
+        / "finance_tracker_bot",
+        single_file=False,
+        store_chat_data=False,
+        store_bot_data=False,
+    )
 
     # Bot's defaults
     defaults = Defaults(
@@ -119,10 +133,11 @@ def main() -> None:
 
     # Get a dispatcher to register handlers
     dispatcher = updater.dispatcher
+
     # Add the Postgres jobstore
-    dispatcher.job_queue.scheduler.add_jobstore(
-        PTBSQLAlchemyJobStore(dispatcher=dispatcher, url=db_uri)
-    )
+    # dispatcher.job_queue.scheduler.add_jobstore(
+    #     PTBSQLAlchemyJobStore(dispatcher=dispatcher, url=db_uri)
+    # )
 
     # A couple of helpers handlers
     start_ = CommandHandler("start", start)
@@ -152,7 +167,7 @@ def main() -> None:
             webhook_url=f"{WEBHOOK_URL}/{token}",
         )
     else:
-        updater.start_polling(poll_interval=0.5)
+        updater.start_polling(poll_interval=1.0)
 
     updater.idle()
 
