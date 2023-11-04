@@ -3,9 +3,6 @@
 Constants
 """
 
-# Logging
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
 # Record's fields
 RECORD_KEYS = ("date", "reason", "amount", "currency", "account", "recorded_on")
 
