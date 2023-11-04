@@ -11,6 +11,7 @@ python = "^3.10"
 gspread = "^5.12.0"
 python-dotenv = "^1.0.0"
 python-telegram-bot = "^20.6"
+pytz = "^2023.3.post1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -21,3 +22,10 @@ isort = "^5.12.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+include = ["bot"]
+ignore = ["bot/old"]
+
+reportOptionalMemberAccess = "warning"
+reportInvalidStringEscapeSequence = false
