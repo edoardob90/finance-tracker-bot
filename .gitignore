@@ -10,3 +10,4 @@ scratch.*
 .python_version
 .python-version
 example*.py
+.idea
