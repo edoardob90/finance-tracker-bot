@@ -1,9 +1,31 @@
 import datetime as dt
+import typing as t
+from enum import Enum
 
 from currencies import CURRENCIES_CODES, currency_parser
 from dateutil.parser import parse as parse_date
 from marshmallow import Schema, fields, post_load
+from telegram import InlineKeyboardButton
 from utils import escape_md
+
+
+class CallbackData(Enum):
+    """A base `Enum` class for callback data"""
+
+    def as_button(self) -> InlineKeyboardButton:
+        """Return a button for a callback data enum"""
+        return InlineKeyboardButton(text=self.value, callback_data=self)
+
+    @staticmethod
+    def button(name: str) -> InlineKeyboardButton:
+        """Return a button for a callback data enum"""
+        _enum = getattr(CallbackData, name.upper())
+        return InlineKeyboardButton(text=_enum.value, callback_data=_enum)
+
+    @classmethod
+    def buttons(cls) -> t.List[InlineKeyboardButton]:
+        """Return a list of buttons for callback data enums"""
+        return [member.as_button() for member in cls]
 
 
 class Record:

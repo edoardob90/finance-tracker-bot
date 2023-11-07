@@ -1,11 +1,10 @@
 import datetime as dt
 import logging
 import typing as t
-from enum import Enum
 
 from dateutil.parser import ParserError
-from models import Record, RecordSchema
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from models import CallbackData, Record, RecordSchema
+from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -17,24 +16,7 @@ from telegram.ext import (
 from utils import calendar_keyboard, escape_md
 
 
-# Callback data
-class CallbackData(Enum):
-    def as_button(self) -> InlineKeyboardButton:
-        """Return a button for a callback data"""
-        return InlineKeyboardButton(text=self.value, callback_data=self)
-
-    @staticmethod
-    def button(name: str) -> InlineKeyboardButton:
-        """Return a button for a callback data"""
-        _enum = getattr(CallbackData, name.upper())
-        return InlineKeyboardButton(text=_enum.value, callback_data=_enum)
-
-    @classmethod
-    def buttons(cls) -> t.List[InlineKeyboardButton]:
-        """Return a list of buttons for a callback data"""
-        return [member.as_button() for member in cls]
-
-
+# Callback data for the record conversation
 class RecordData(CallbackData):
     DATE = "📆 Date"
     DESCRIPTION = "🧾 Description"
