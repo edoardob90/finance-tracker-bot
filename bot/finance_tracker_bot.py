@@ -1,7 +1,7 @@
 import typing as t
-from functools import partial
 
 import pytz
+from record import record_handler
 from telegram import BotCommand, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -10,11 +10,9 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     Defaults,
+    PicklePersistence,
 )
-from telegram.helpers import escape_markdown
-from utils import error_handler
-
-escape = partial(escape_markdown, version=2)
+from utils import error_handler, escape_md
 
 
 class FinanceTrackerBot:
@@ -41,11 +39,11 @@ class FinanceTrackerBot:
                 "Here is what you can do:\n\n"
                 "  - You can add a new record with /record\n"
                 "  - Use /show to get an overview of your records and manage them\n"
-                "  - Manager your settings with /settings\n\n"
+                "  - Manage your settings with /settings\n\n"
                 "Use /help to have a more detailed help."
             )
 
-            await update.message.reply_text(escape(welcome_message))
+            await update.message.reply_text(escape_md(welcome_message))
 
         return
 
@@ -63,7 +61,7 @@ class FinanceTrackerBot:
         )
 
         if update.message:
-            await update.message.reply_text(escape(help_message))
+            await update.message.reply_text(escape_md(help_message))
 
         return
 
@@ -76,16 +74,24 @@ class FinanceTrackerBot:
         defaults = Defaults(
             parse_mode=ParseMode.MARKDOWN_V2, tzinfo=pytz.timezone("Europe/Rome")
         )
+
+        persistence = PicklePersistence(
+            filepath=self.config["data_dir"] / "finance_tracker_bot.pickle"
+        )
+
         application = (
             ApplicationBuilder()
             .token(self.config["token"])
+            .arbitrary_callback_data(True)
             .defaults(defaults)
+            .persistence(persistence)
             .post_init(self.post_init)
             .build()
         )
 
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help))
+        application.add_handler(record_handler)
 
         application.add_error_handler(error_handler)
 

@@ -115,6 +115,7 @@ cython_debug/
 
 # Editors
 .idea
+.vscode
 
 # Misc
 old

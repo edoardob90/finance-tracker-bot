@@ -1,6 +1,5 @@
 import pytest
-
-from bot.currencies import currency_parser
+from currencies import currency_parser
 
 
 def test_amount_string():
