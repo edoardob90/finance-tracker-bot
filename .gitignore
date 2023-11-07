@@ -119,3 +119,5 @@ cython_debug/
 # Misc
 old
 examples
+data
+*.pickle
