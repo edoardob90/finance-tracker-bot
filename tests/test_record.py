@@ -13,13 +13,13 @@ def test_empty_record():
     assert record.recorded_at is None
 
 
-def test_schema_dump():
+def test_schema_dump_empty():
     schema = RecordSchema()
 
     assert isinstance(schema.dump({}), dict)
 
 
-def test_schema_load():
+def test_schema_load_empty():
     schema = RecordSchema()
     record = schema.load({})
 
@@ -34,4 +34,26 @@ def test_schema_load():
             "account",
             "recorded_at",
         )
+    )
+
+
+def test_schema_many_empty():
+    schema = RecordSchema()
+    records = schema.load([{}, {}], many=True)
+
+    assert isinstance(records, list)
+    assert all(isinstance(record, Record) for record in records)
+    assert all(
+        all(
+            getattr(record, attr) is None
+            for attr in (
+                "date",
+                "amount",
+                "currency",
+                "description",
+                "account",
+                "recorded_at",
+            )
+        )
+        for record in records
     )
