@@ -1,3 +1,5 @@
+<div align="center">⚠️⚠️⚠️<br>The development branch <strong>currently</strong> is the <code>service-account</code> branch.<br>New features and bug fixes are pushed to that branch until the app is approved by Google and is able to use permanent OAuth credentials.</div>
+
 # Finance Tracker bot
 
 A Telegram bot that helps with your personal finances. It's an experimental and work-in-progress project that provides (or will provide in the future) the following functions:
