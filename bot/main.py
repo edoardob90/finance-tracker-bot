@@ -20,7 +20,9 @@ def main():
 
     # Config
     bot_config: t.Dict[str, t.Any] = {
-        "token": os.environ["TOKEN"],
+        "token": os.environ.get("TOKEN")
+        or os.environ.get("TELEGRAM_BOT_TOKEN")
+        or os.environ.get("BOT_TOKEN"),
         "data_dir": pl.Path(os.environ.get("DATA_DIR", "data")).expanduser().resolve(),
         "mode": os.environ.get("MODE", "polling"),
         "webhook_url": os.environ.get("WEBHOOK_URL", None),
