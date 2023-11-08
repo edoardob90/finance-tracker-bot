@@ -2,6 +2,7 @@ import typing as t
 
 import pytz
 from record import record_handler
+from show import show_handler
 from telegram import BotCommand, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -92,6 +93,7 @@ class FinanceTrackerBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help))
         application.add_handler(record_handler)
+        application.add_handler(show_handler)
 
         application.add_error_handler(error_handler)
 
