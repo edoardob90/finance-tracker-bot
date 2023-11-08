@@ -88,16 +88,16 @@ async def print_help(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
             "or the 'Cancel' button to discard it.\n\n"
             "Notes about the fields:\n\n"
         )
-        + "  \- *Date*: can be entered as a date in any well\-known format, "
+        + "*Date*: can be entered as a date in any well\-known format, "
         "for example, '01/01/2021', '2021\-01\-01', or '6 nov 2023'\n\n"
-        "  \- *Description*: a short description of the record\n\n"
-        "  \- *Amount*: the amount of the record, including the currency\. "
+        "*Description*: a short description of the record\n\n"
+        "*Amount*: the amount of the record, including the currency\. "
         " A negative amount is an expense, a positive amount an income\. "
         "The currency can be entered as a currency code, for example, 'EUR', 'USD',"
         " or as a symbol, for example, '€', '$', or '£'\. "
         "You can also use a single letter for brevity: 'e' or 'E' for 'EUR', 'u' for 'USD', etc\. "
         "If you don't specify a currency, your default currency will be used \(if set\)\n\n"
-        "  \- *Account*: the account associated with the record: 'Cash', 'Credit Card', etc\."
+        "*Account*: the account associated with the record: 'Cash', 'Credit Card', etc\."
     )
 
     await update.message.reply_text(help_msg)
