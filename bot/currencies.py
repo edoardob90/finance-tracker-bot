@@ -2,22 +2,27 @@ import re
 import typing as t
 from itertools import chain
 
-CURRENCIES: t.Dict[str, t.Dict] = {
-    "EUR": {"symbol": "€", "name": "Euro", "aliases": ("E", "e", "€", "eur", "euro")},
+
+class CurrencyParsingError(Exception):
+    """An exception for currency parsing errors"""
+
+
+CURRENCIES: t.Dict[str, t.Dict[str, t.Any]] = {
+    "EUR": {"symbol": "€", "name": "Euro", "aliases": ("€", "eur", "euro")},
     "USD": {
         "symbol": "$",
         "name": "US Dollar",
-        "aliases": ("U", "u", "$", "usd", "dollar"),
+        "aliases": ("us$", "usd", "dollar"),
     },
     "CHF": {
         "symbol": "CHF",
         "name": "Swiss Franc",
-        "aliases": ("C", "c", "chf", "franc", "Sfr.", "sfr.", "Sfr", "sfr"),
+        "aliases": ("chf", "franc", "Sfr.", "sfr.", "Sfr", "sfr"),
     },
     "GBP": {
         "symbol": "£",
         "name": "British Pound",
-        "aliases": ("G", "g", "£", "gbp", "pound"),
+        "aliases": ("gbp", "pound", "UKP", "ukp", "quid", "sterling"),
     },
 }
 
@@ -139,20 +144,22 @@ def parse_number(number: str | None) -> float | None:
         return None
 
 
-def currency_parser(number_str: str | t.Any) -> t.Tuple[float, str | None]:
+def currency_parser(amount: str | t.Any) -> t.Tuple[float, str | None]:
     """Parse a number string that contains a currency symbol or name"""
-    _number_str = number_str if isinstance(number_str, str) else str(number_str)
+    _amount = str(amount)
 
     # Extract the currency part
-    currency = extract_currency(_number_str)
+    currency = extract_currency(_amount)
 
     # Extract the number part
-    amount = extract_number(_number_str)
+    number = extract_number(_amount)
 
     # Parse the number
-    number = parse_number(amount)
+    number_value = parse_number(number)
 
-    return round(number, 2) if number else 0.0, symbol_from_str(currency)
+    print(symbol_from_str(currency), number_value)
+
+    return round(number_value, 2) if number_value else 0.0, symbol_from_str(currency)
 
 
 def symbol_from_str(alias: str | None) -> str | None:
@@ -161,5 +168,5 @@ def symbol_from_str(alias: str | None) -> str | None:
         return
 
     for currency, props in CURRENCIES.items():
-        if alias == currency or alias in props["aliases"]:
+        if alias in {currency, props["symbol"]} | set(props["aliases"]):
             return currency

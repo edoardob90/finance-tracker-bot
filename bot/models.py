@@ -2,7 +2,7 @@ import datetime as dt
 import typing as t
 from enum import Enum
 
-from currencies import CURRENCIES_CODES, currency_parser
+from currencies import CURRENCIES_CODES, CurrencyParsingError, currency_parser
 from dateutil.parser import parse as parse_date
 from pydantic import BaseModel, field_validator, model_validator
 from telegram import InlineKeyboardButton
@@ -20,7 +20,12 @@ class Amount(BaseModel):
     @model_validator(mode="after")
     def validate_amount(self) -> "Amount":
         if isinstance(self.value, str) and self.currency is None:
-            self.value, self.currency = currency_parser(self.value)
+            input_value = self.value.strip()
+            self.value, self.currency = currency_parser(input_value)
+            if not self.currency:
+                raise CurrencyParsingError(
+                    f"Could not parse currency from string: {input_value}"
+                )
         return self
 
     @field_validator("currency")

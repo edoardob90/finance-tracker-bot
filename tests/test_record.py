@@ -1,4 +1,5 @@
 import pytest
+from currencies import CurrencyParsingError
 from models import Amount, Record
 from pydantic import ValidationError
 
@@ -16,6 +17,11 @@ def test_empty_amount():
 def test_unknown_currency():
     with pytest.raises(ValidationError):
         Amount(value="100", currency="XYZ")
+
+
+def test_unparsable_amount():
+    with pytest.raises(CurrencyParsingError):
+        Amount(value="something")
 
 
 @pytest.fixture

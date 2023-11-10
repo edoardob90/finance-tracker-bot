@@ -5,7 +5,7 @@ import logging
 import os
 import traceback
 import typing as t
-from calendar import Calendar
+from calendar import Calendar, day_abbr
 
 from telegram import InlineKeyboardButton, Update
 from telegram.constants import ParseMode
@@ -54,8 +54,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
     """Return a list of `InlineKeyboardButton` that represents a monthly calendar"""
 
-    def calendar_day_button(day: int) -> InlineKeyboardButton:
+    def calendar_day_button(day: int | str) -> InlineKeyboardButton:
         """Return an `InlineKeyboardButton` to be used in a calendar keyboard"""
+        if isinstance(day, str):
+            return InlineKeyboardButton(text=day, callback_data=str(None))
+
         if day == 0:
             return InlineKeyboardButton(text="❌", callback_data=str(None))
 
@@ -64,6 +67,6 @@ def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
             callback_data=f"{day:02d}/{date.month:02d}/{date.year}",
         )
 
-    calendar = Calendar().monthdayscalendar(date.year, date.month)
+    calendar = [list(day_abbr)] + Calendar().monthdayscalendar(date.year, date.month)
 
     return [list(map(calendar_day_button, row)) for row in calendar]

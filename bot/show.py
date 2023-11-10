@@ -1,5 +1,3 @@
-import typing as t
-
 from models import Record
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
@@ -11,8 +9,18 @@ async def show_records(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if _records := context.user_data["records"]:
         records = [Record.model_validate(r) for r in _records]
 
-        reply_text = "\n\n".join(
-            [f"__RECORD \#{i}__\n{record}" for i, record in enumerate(records, start=1)]
+        reply_text = (
+            f"You saved *{len(records)}* record{'s' if len(records) > 1 else ''}:\n\n"
+            + "\n\n".join(
+                [
+                    (
+                        f"*__Record \#{i}__* "
+                        f"\({record.recorded_at.strftime('%d/%m/%Y, %H:%M')}\)\n\n"
+                        f"{record}"
+                    )
+                    for i, record in enumerate(records, start=1)
+                ]
+            )
         )
     else:
         reply_text = "⚠️ No records found\."
