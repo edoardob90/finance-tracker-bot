@@ -28,6 +28,7 @@ class FinanceTrackerBot:
             BotCommand("show", "Show and manage the saved records"),
             BotCommand("summary", "Obtain a summary of your records"),
             BotCommand("settings", "Manage your settings"),
+            BotCommand("cancel", "Cancel the current operation"),
         ]
 
     async def start(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:

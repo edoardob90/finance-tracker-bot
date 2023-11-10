@@ -60,7 +60,7 @@ def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
             return InlineKeyboardButton(text="❌", callback_data=str(None))
 
         return InlineKeyboardButton(
-            text=("🟢" if day == date.day else str(day)),
+            text=str(day),
             callback_data=f"{day:02d}/{date.month:02d}/{date.year}",
         )
 

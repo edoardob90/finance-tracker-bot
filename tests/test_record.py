@@ -1,45 +1,42 @@
 import pytest
-from models import Record, RecordSchema
+from models import Amount, Record
+from pydantic import ValidationError
 
 
-def test_empty_record():
-    record = Record()
+@pytest.fixture
+def amount():
+    return Amount(value="100", currency="EUR")
 
+
+def test_empty_amount():
+    with pytest.raises(ValidationError):
+        Amount()  # type: ignore
+
+
+def test_unknown_currency():
+    with pytest.raises(ValidationError):
+        Amount(value="100", currency="XYZ")
+
+
+@pytest.fixture
+def record():
+    return Record()
+
+
+def test_empty_record(record: Record):
     assert record.date is None
     assert record.amount is None
-    assert record.currency is None
     assert record.description is None
     assert record.account is None
     assert record.recorded_at is None
 
 
-def test_schema_dump_empty():
-    schema = RecordSchema()
-
-    assert isinstance(schema.dump({}), dict)
+def test_schema_dump_empty(record: Record):
+    assert isinstance(record.model_dump(), dict)
 
 
-def test_schema_load_empty():
-    schema = RecordSchema()
-    record = schema.load({})
-
-    assert isinstance(record, Record)
-    assert all(
-        getattr(record, attr) is None
-        for attr in (
-            "date",
-            "amount",
-            "currency",
-            "description",
-            "account",
-            "recorded_at",
-        )
-    )
-
-
-def test_schema_many_empty():
-    schema = RecordSchema()
-    records = schema.load([{}, {}], many=True)
+def test_schema_many_empty(record: Record):
+    records = [record for _ in range(3)]
 
     assert isinstance(records, list)
     assert all(isinstance(record, Record) for record in records)
@@ -49,7 +46,6 @@ def test_schema_many_empty():
             for attr in (
                 "date",
                 "amount",
-                "currency",
                 "description",
                 "account",
                 "recorded_at",
