@@ -118,7 +118,7 @@ cython_debug/
 .vscode
 
 # Misc
-old
-examples
+old/
+examples/
 data/
 *.pickle
