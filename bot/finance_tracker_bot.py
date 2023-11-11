@@ -1,8 +1,9 @@
 import typing as t
 
 import pytz
-from record import record_handler
-from show import show_handler
+from openai_api import OpenAI
+from record import RecordHandler
+from show import ShowHandler
 from telegram import BotCommand, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -19,7 +20,8 @@ from utils import error_handler, escape_md
 class FinanceTrackerBot:
     """A class representing the Finance Tracker bot"""
 
-    def __init__(self, config: t.Dict[str, t.Any]) -> None:
+    def __init__(self, config: t.Dict[str, t.Any], openai_api: OpenAI) -> None:
+        self.openai_api = openai_api
         self.config = config
         self.commands = [
             BotCommand("start", "Start the bot"),
@@ -58,8 +60,8 @@ class FinanceTrackerBot:
         help_message = (
             "Here is a list of supported commands:\n\n"
             + "\n".join(commands)
-            + "\n\nYou can always use a command followed by 'help' to obtain more information about it. "
-            "For example, '/record help' will show you how to use the '/record' command."
+            + "\n\nYou can always use a `?` followed by a command to obtain more information about it. "
+            "For example, `? record` will show you how to use the '/record' command."
         )
 
         if update.message:
@@ -91,11 +93,18 @@ class FinanceTrackerBot:
             .build()
         )
 
+        # Basic handlers
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help))
-        application.add_handler(record_handler)
-        application.add_handler(show_handler)
 
+        # Custom handlers
+        record = RecordHandler(self)
+        application.add_handlers(record.handlers)
+
+        show = ShowHandler(self)
+        application.add_handlers(show.handlers)
+
+        # Error handler
         application.add_error_handler(error_handler)
 
         application.run_polling()
