@@ -11,6 +11,13 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionToolParam,
 )
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+    wait_random,
+)
 
 # Set logger
 logger = logging.getLogger(__name__)
@@ -99,6 +106,11 @@ class OpenAI:
 
         self.model = model
 
+    @retry(
+        retry=retry_if_exception_type(openai.RateLimitError),
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(10) + wait_random(0, 5),
+    )
     async def get_chat_response(self, query: str) -> ChatCompletion:
         """Get a chat response"""
         messages: t.List[ChatCompletionMessageParam] = [
@@ -126,6 +138,11 @@ class OpenAI:
 
         return response
 
+    @retry(
+        retry=retry_if_exception_type(openai.RateLimitError),
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(10) + wait_random(0, 5),
+    )
     async def get_transcription(
         self, audio_file: t.IO[bytes] | pl.Path
     ) -> Transcription:

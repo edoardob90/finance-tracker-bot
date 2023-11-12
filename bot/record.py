@@ -242,7 +242,9 @@ class RecordHandler(HandlerBase):
                         tmp_file.file
                     )
 
-                    logger.info("Transcription response: %s", transcription)
+                    logger.info(
+                        "Transcription response: %s", transcription.model_dump()
+                    )
                     query = str(transcription.text)
             else:
                 logger.info("Natural language input is a text message")
@@ -257,7 +259,7 @@ class RecordHandler(HandlerBase):
             )
             return END
         else:
-            logger.info("Response from OpenAI API: %s", response)
+            logger.info("Response from OpenAI API: %s", response.model_dump())
 
             if (
                 isinstance(response.choices, list)
