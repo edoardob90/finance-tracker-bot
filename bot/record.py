@@ -56,6 +56,11 @@ record_inline_kb = [
     ],
 ]
 
+calendar_keyboard_buttons = [
+    [Action.PREV.as_button(), Action.NEXT.as_button()],
+    [Action.CANCEL.as_button()],
+]
+
 
 class RecordHandler(HandlerBase):
     """A class for the /record command"""
@@ -75,17 +80,17 @@ class RecordHandler(HandlerBase):
                             self.input,
                             pattern=lambda data: data in RecordData,
                         ),
-                        CallbackQueryHandler(
-                            self.save, pattern=lambda data: data == Action.SAVE
-                        ),
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND, self.input_natural_language
+                        ),
+                        CallbackQueryHandler(
+                            self.save, pattern=lambda data: data == Action.SAVE
                         ),
                     ],
                     REPLY: [
                         MessageHandler(filters.TEXT & ~filters.COMMAND, self.store),
                         CallbackQueryHandler(
-                            self.store, pattern=r"(\d{2}\/\d{2}\/\d{4})"
+                            self.store, pattern=lambda data: isinstance(data, dt.date)
                         ),
                         CallbackQueryHandler(
                             self.change_calendar_keyboard,
@@ -189,12 +194,7 @@ class RecordHandler(HandlerBase):
 
             if choice == RecordData.DATE:
                 calendar_kb = calendar_keyboard(dt.date.today())
-                calendar_kb.extend(
-                    [
-                        [Action.PREV.as_button(), Action.NEXT.as_button()],
-                        [Action.CANCEL.as_button()],
-                    ]
-                )
+                calendar_kb.extend(calendar_keyboard_buttons)
                 reply_kb = InlineKeyboardMarkup(calendar_kb)
                 context.user_data["keyboard_type"] = "calendar"
 
@@ -220,10 +220,40 @@ class RecordHandler(HandlerBase):
 
     async def input_natural_language(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ):
+    ) -> int | None:
         """Add a new record using natural language"""
         if update.message:
             query = str(update.message.text)
+
+            try:
+                response = await self.bot.openai_api.get_chat_response(query)
+            except Exception as err:
+                logging.error("Error while calling the OpenAI API: %s", err)
+                await update.message.reply_text(
+                    "⚠️ Something went wrong\. Please, try again with `/record`\."
+                )
+                return END
+            else:
+                logging.info("OpenAI response: %s", response)
+
+                if (
+                    isinstance(response.choices, list)
+                    and (response.choices[0].message.tool_calls)
+                    and (
+                        function_call := response.choices[0]
+                        .message.tool_calls[0]
+                        .function
+                    )
+                ):
+                    record = Record.model_validate_json(function_call.arguments)
+
+                    context.user_data["record"].update(record.model_dump())
+                    logging.info("Record saved to user_data: %s", record.model_dump())
+
+                    await update.message.reply_text(
+                        f"🤖 Is this the record you want to save?\n\n{record}",
+                        reply_markup=InlineKeyboardMarkup(record_inline_kb),
+                    )
 
     async def change_calendar_keyboard(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -252,12 +282,7 @@ class RecordHandler(HandlerBase):
             context.user_data["selected_month_year"] = year, month
 
             calendar_kb = calendar_keyboard(today.replace(month=month, year=year))
-            calendar_kb.extend(
-                [
-                    [Action.PREV.as_button(), Action.NEXT.as_button()],
-                    [Action.CANCEL.as_button()],
-                ]
-            )
+            calendar_kb.extend(calendar_keyboard_buttons)
 
             await query.edit_message_text(
                 (
@@ -286,12 +311,7 @@ class RecordHandler(HandlerBase):
                 reply_kb = calendar_keyboard(
                     dt.date.today().replace(year=year, month=month)
                 )
-                reply_kb.extend(
-                    [
-                        [Action.PREV.as_button(), Action.NEXT.as_button()],
-                        [Action.CANCEL.as_button()],
-                    ]
-                )
+                reply_kb.extend(calendar_keyboard_buttons)
             elif context.user_data["keyboard_type"] == "account":
                 # TODO: account keyboard
                 pass
@@ -401,7 +421,7 @@ class RecordHandler(HandlerBase):
         """Cancel the record conversation"""
         reply_text = (
             "🛑 Action *cancelled*\. "
-            "You can use `/record` again or use `/record help` for more information\."
+            "You can use `/record` again or use `? record` for more information\."
         )
 
         context.user_data["selected_month_year"] = None

@@ -1,16 +1,15 @@
 import datetime as dt
 import logging
+import pathlib as pl
 import typing as t
 
 import openai
 from openai.types.audio import Transcription
 from openai.types.chat import (
     ChatCompletion,
-    ChatCompletionMessage,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionUserMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
 )
-from openai.types.chat.completion_create_params import Function
 
 # OpenAI models
 GPT_STABLE_MODELS = ("gpt-3-5-turbo", "gpt-4")
@@ -25,45 +24,44 @@ GPT_ALL_MODELS = GPT_STABLE_MODELS + GPT_3_MODELS + GPT4_MODELS
 
 
 # OpenAI functions specs
-FUNCTIONS: t.List[Function] = [
-    Function(
-        name="parse_expense_income_record",
-        description=(
-            "Parse an input string with the details of an expense or income record. "
-            "Return a dictionary representing the record. "
-            "Translate in English if necessary."
-        ),
-        parameters=dict(
-            type="object",
-            properties=dict(
-                date=dict(
-                    type="string",
-                    description="The record date, in ISO8601 format",
-                ),
-                amount=dict(
-                    type="object",
-                    description=(
-                        "The amount of the expense or income, represented as a dict. "
-                        "An expense must have a negative value, while an income a positive one. "
-                        "The currency must be expressed with its currency code, e.g., EUR, USD, GBP, etc."
-                    ),
-                    properties=dict(
-                        value=dict(type="number"),
-                        currency=dict(type="string"),
-                    ),
-                ),
-                description=dict(
-                    type="string",
-                    description="A short summary about the expense or income",
-                ),
-                account=dict(
-                    type="string",
-                    description="The account where the transaction happened",
-                ),
-            ),
-            required=["date", "amount", "currency", "account"],
-        ),
-    ),
+FUNCTIONS: t.List[ChatCompletionToolParam] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "parse_expense_income_record",
+            "description": "Parse an input string with the details of an expense record and return a dict representing the record. Translate in English if necessary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "The record date, in ISO8601 format",
+                    },
+                    "amount": {
+                        "type": "object",
+                        "description": (
+                            "The amount of the expense or income, represented as a dict. "
+                            "An expense must have a negative value, while an income a positive value. "
+                            "The currency must be expressed with its currency code, e.g., EUR, USD, GBP, etc."
+                        ),
+                        "properties": {
+                            "value": {"type": "number"},
+                            "currency": {"type": "string"},
+                        },
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "A short summary about the expense or income",
+                    },
+                    "account": {
+                        "type": "string",
+                        "description": "The account where the transaction happened",
+                    },
+                },
+                "required": ["date", "amount", "currency", "account"],
+            },
+        },
+    }
 ]
 
 
@@ -95,22 +93,30 @@ class OpenAI:
 
     async def get_chat_response(self, query: str) -> ChatCompletion:
         """Get a chat response"""
-        messages = [
-            ChatCompletionSystemMessageParam(
-                role="system",
-                content=f"Today is {dt.date.today().strftime('%A, %d %B %Y')}.",
-            ),
-            ChatCompletionUserMessageParam(role="user", content=query),
+        messages: t.List[ChatCompletionMessageParam] = [
+            {
+                "role": "system",
+                "content": "You are an helpful assistant. "
+                "Your task is to read a natural language input that describes expenses or income and extract meaningful details from them",
+            },
+            {
+                "role": "user",
+                "content": "Today is {}.".format(
+                    dt.date.today().strftime("%A, %d %B %Y")
+                ),
+            },
+            {"role": "user", "content": "New record input: {}".format(query)},
         ]
 
         try:
             response: ChatCompletion = await self.client.chat.completions.create(
-                messages=messages,
-                model=self.model,
-                functions=FUNCTIONS,
+                messages=messages, model=self.model, tools=FUNCTIONS, tool_choice="auto"
             )
         except openai.OpenAIError as err:
             logging.error("Error while calling the OpenAI API: %s", err)
             raise err
 
         return response
+
+    async def get_transcription(self, audio_file: str | pl.Path) -> Transcription:
+        """Transcribe an audio file"""
