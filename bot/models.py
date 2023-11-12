@@ -49,13 +49,11 @@ class Record(BaseModel):
     @classmethod
     def parse_date(cls, v):
         if isinstance(v, str):
-            return parse_date(v, dayfirst=True).date()
+            return parse_date(v).date()
         return v
 
     def __str__(self) -> str:
-        _date = (
-            self.date.strftime("%d/%m/%Y") if isinstance(self.date, dt.date) else None
-        )
+        _date = self.date.isoformat() if isinstance(self.date, dt.date) else None
 
         _amount, _currency = (
             (self.amount.value, self.amount.currency) if self.amount else (None, None)

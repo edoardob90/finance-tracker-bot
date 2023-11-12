@@ -64,7 +64,7 @@ def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
 
         return InlineKeyboardButton(
             text=str(day),
-            callback_data=f"{day:02d}/{date.month:02d}/{date.year}",
+            callback_data=dt.date(date.year, date.month, day),
         )
 
     calendar = [list(day_abbr)] + Calendar().monthdayscalendar(date.year, date.month)
