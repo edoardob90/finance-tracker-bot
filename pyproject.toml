@@ -13,7 +13,6 @@ python-dotenv = "^1.0.0"
 python-telegram-bot = { extras = ["callback-data"], version = "^20.6" }
 pytz = "^2023.3.post1"
 python-dateutil = "^2.8.2"
-attrs = "^23.1.0"
 pydantic = "^2.4.2"
 tiktoken = "^0.5.1"
 openai = "^1.2.2"
