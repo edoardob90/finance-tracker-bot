@@ -1,4 +1,5 @@
 import typing as t
+from itertools import chain
 
 import pytz
 from openai_api import OpenAI
@@ -9,12 +10,16 @@ from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    BaseHandler,
     CommandHandler,
     ContextTypes,
     Defaults,
     PicklePersistence,
 )
 from utils import error_handler, escape_md
+
+if t.TYPE_CHECKING:
+    from handlers import HandlerBase
 
 
 class FinanceTrackerBot:
@@ -94,15 +99,22 @@ class FinanceTrackerBot:
         )
 
         # Basic handlers
-        application.add_handler(CommandHandler("start", self.start))
-        application.add_handler(CommandHandler("help", self.help))
+        application.add_handlers(
+            {
+                -1: [
+                    CommandHandler("start", self.start),
+                    CommandHandler("help", self.help),
+                ]
+            }
+        )
 
         # Custom handlers
-        record = RecordHandler(self)
-        application.add_handlers(record.handlers)
+        handlers: t.List[t.List[BaseHandler]] = [
+            RecordHandler(self).handlers,
+            ShowHandler(self).handlers,
+        ]
 
-        show = ShowHandler(self)
-        application.add_handlers(show.handlers)
+        application.add_handlers(list(chain.from_iterable(handlers)))
 
         # Error handler
         application.add_error_handler(error_handler)

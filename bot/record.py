@@ -244,6 +244,7 @@ class RecordHandler(HandlerBase):
                 query = str(update.message.text)
 
             response = await self.bot.openai_api.get_chat_response(query)
+
         except Exception as err:
             logging.error("Error while calling the OpenAI API: %s", err)
             await update.message.reply_text(
@@ -251,7 +252,7 @@ class RecordHandler(HandlerBase):
             )
             return END
         else:
-            logging.info("OpenAI response: %s", response)
+            logging.info("Response from OpenAI API: %s", response)
 
             if (
                 isinstance(response.choices, list)
@@ -268,6 +269,10 @@ class RecordHandler(HandlerBase):
                 await update.message.reply_text(
                     f"🤖 Is this the record you want to save?\n\n{record}",
                     reply_markup=InlineKeyboardMarkup(record_inline_kb),
+                )
+            else:
+                await update.message.reply_text(
+                    "🤷🏻‍♂️ I could not understand your input\. Can you try again?"
                 )
 
     async def change_calendar_keyboard(

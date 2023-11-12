@@ -46,8 +46,6 @@ def main():
     # Create the data directory if it doesn't exist
     bot_config["data_dir"].mkdir(parents=True, exist_ok=True)
 
-    # ... other checks
-
     # Setup the OpenAI API
     openai_api = OpenAI(openai_config)
 
