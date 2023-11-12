@@ -459,4 +459,3 @@ class RecordHandler(HandlerBase):
         context.user_data["start_over"] = True
         await update.callback_query.answer()
         return await self.start(update, context)
-        return await self.start(update, context)
