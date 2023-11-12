@@ -3,54 +3,42 @@ import os
 import pathlib as pl
 import typing as t
 
-from dotenv import load_dotenv
+import tomllib as toml
 from finance_tracker_bot import FinanceTrackerBot
 from openai_api import OpenAI
 
 
 def main():
-    # Load the .env file
-    load_dotenv()
+    # Load the .config file
+    config_filepath = pl.Path.cwd() / ".config.toml"
+    try:
+        with config_filepath.open(mode="rb") as config_file:
+            config: t.Dict[str, t.Any] = toml.load(config_file)
+    except FileNotFoundError as err:
+        raise RuntimeError("The .config.toml file is missing.") from err
 
     # Logging
-    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_LEVEL = os.environ.get("LOG_LEVEL", config.get("log_level", "INFO"))
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=LOG_LEVEL
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    # Bot config
-    bot_config: t.Dict[str, t.Any] = {
-        "token": os.environ.get("TOKEN")
-        or os.environ.get("TELEGRAM_BOT_TOKEN")
-        or os.environ.get("BOT_TOKEN"),
-        "bot_language": os.environ.get("BOT_LANGUAGE", "en"),
-        "data_dir": pl.Path(os.environ.get("DATA_DIR", "data")).expanduser().resolve(),
-        "mode": os.environ.get("MODE", "polling"),
-        "webhook_url": os.environ.get("WEBHOOK_URL", None),
-        "port": int(os.environ.get("PORT", "5000")),
-        "listen_url": os.environ.get("LISTEN_URL", "127.0.0.1"),
-        "openai_allowed_users": os.environ.get("OPENAI_ALLOWED_USERS", "").split(","),
-    }
-
-    # OpenAI API config
-    openai_config: t.Dict[str, t.Any] = {
-        "api_key": os.environ.get("OPENAI_API_KEY"),
-        "model": os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo"),
-    }
-
     # Check that the token is provided
-    if not bot_config["token"]:
+    if not config["bot"]["token"]:
         raise ValueError("A Telegram bot token (TOKEN) must be provided.")
 
-    # Create the data directory if it doesn't exist
-    bot_config["data_dir"].mkdir(parents=True, exist_ok=True)
+    # Create the data directory
+    data_dir = pl.Path(config["bot"].get("data_dir") or "./data").expanduser().resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    config["bot"]["data_dir"] = data_dir
 
     # Setup the OpenAI API
-    openai_api = OpenAI(openai_config)
+    openai_api = OpenAI(config["openai"])
 
     # Create and run the bot
-    FinanceTrackerBot(bot_config, openai_api).run()
+    bot = FinanceTrackerBot(config["bot"], openai_api)
+    bot.run()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import logging
 import typing as t
 
 from models import Record
@@ -8,7 +9,8 @@ if t.TYPE_CHECKING:
     from finance_tracker_bot import FinanceTrackerBot
 
 from handlers import HandlerBase
-from utils import escape_md
+
+logger = logging.getLogger(__name__)
 
 
 class ShowHandler(HandlerBase):
@@ -18,7 +20,7 @@ class ShowHandler(HandlerBase):
         super().__init__(bot)
         self._command = "show"
         self._handlers = [
-            PrefixHandler(["?", "? "], self._command, self.print_help),
+            PrefixHandler("?", self._command, self.print_help),
             CommandHandler(self._command, self.show_records),
         ]
 

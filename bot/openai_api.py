@@ -12,8 +12,11 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
+# Set logger
+logger = logging.getLogger(__name__)
+
 # OpenAI models
-GPT_STABLE_MODELS = ("gpt-3-5-turbo", "gpt-4")
+GPT_STABLE_MODELS = ("gpt-3.5-turbo", "gpt-4")
 GPT_3_MODELS = (
     "gpt-3.5-turbo-1106",
     "gpt-3.5-turbo-16k",
@@ -71,15 +74,16 @@ class OpenAI:
 
     def __init__(self, config: t.Dict[str, t.Any]) -> None:
         """Initialize the OpenAI API wrapper"""
-        # Bot language
-        self.language: str = config.get("language", "en")
+        # Language for the audio transcription
+        self.language: str = config.get("whisper_language", "en")
 
         # OpenAI API key
         self.api_key: str | None = config.get("api_key")
 
-        # Set chosen model or use the default one
-        self.model: str = config.get("model", "gpt-3-5-turbo")
+        # Set models or use the defaults
+        self.model: str = config.get("model", "gpt-3.5-turbo")
         self.whisper_model = "whisper-1"
+        logger.info("Using models: '%s' and '%s'", self.model, self.whisper_model)
 
         # Check that the API key is provided
         if not self.api_key:
@@ -117,7 +121,7 @@ class OpenAI:
                 messages=messages, model=self.model, tools=FUNCTIONS, tool_choice="auto"
             )
         except openai.OpenAIError as err:
-            logging.error("Error while calling the OpenAI API: %s", err)
+            logger.error("Error while calling the OpenAI API: %s", err)
             raise err
 
         return response
@@ -133,10 +137,10 @@ class OpenAI:
                 file=audio_file, model=self.whisper_model, language=self.language
             )
         except FileNotFoundError:
-            logging.error(f"File '{audio_file.name}' cannot be found")
+            logger.error(f"File '{audio_file.name}' cannot be found")
             raise
         except Exception:
-            logging.error("Error while performing an audio transcription API request")
+            logger.error("Error while performing an audio transcription API request")
             raise
 
         return response

@@ -18,10 +18,14 @@ from telegram.ext import (
     PrefixHandler,
     filters,
 )
-from utils import calendar_keyboard, escape_md
+from utils import calendar_keyboard, escape_md, requires_login
 
 if t.TYPE_CHECKING:
     from finance_tracker_bot import FinanceTrackerBot
+
+
+# Set logger
+logger = logging.getLogger(__name__)
 
 
 # Callback data for the record conversation
@@ -70,7 +74,7 @@ class RecordHandler(HandlerBase):
         super().__init__(bot)
         self._command = "record"
         self._handlers = [
-            PrefixHandler(["?", "? "], self._command, self.print_help),
+            PrefixHandler("?", self._command, self.print_help),
             ConversationHandler(
                 entry_points=[
                     CommandHandler(self._command, self.start),
@@ -220,13 +224,14 @@ class RecordHandler(HandlerBase):
 
         return REPLY
 
+    @requires_login
     async def input_natural_language(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> int | None:
         """Add a new record using natural language"""
         try:
             if audio := update.message.voice:
-                logging.info("Natural language input is a voice message")
+                logger.info("Natural language input is a voice message")
 
                 with NamedTemporaryFile(suffix=".ogg") as tmp_file:
                     audio_file = await audio.get_file()
@@ -237,22 +242,22 @@ class RecordHandler(HandlerBase):
                         tmp_file.file
                     )
 
-                    logging.info("Transcription response: %s", transcription)
+                    logger.info("Transcription response: %s", transcription)
                     query = str(transcription.text)
             else:
-                logging.info("Natural language input is a text message")
+                logger.info("Natural language input is a text message")
                 query = str(update.message.text)
 
             response = await self.bot.openai_api.get_chat_response(query)
 
         except Exception as err:
-            logging.error("Error while calling the OpenAI API: %s", err)
+            logger.error("Error while calling the OpenAI API: %s", err)
             await update.message.reply_text(
                 "⚠️ Something went wrong\. Please, try again with `/record`\."
             )
             return END
         else:
-            logging.info("Response from OpenAI API: %s", response)
+            logger.info("Response from OpenAI API: %s", response)
 
             if (
                 isinstance(response.choices, list)
@@ -264,7 +269,7 @@ class RecordHandler(HandlerBase):
                 record = Record.model_validate_json(function_call.arguments)
 
                 context.user_data["record"].update(record.model_dump())
-                logging.info("Record saved to user_data: %s", record.model_dump())
+                logger.info("Record saved to user_data: %s", record.model_dump())
 
                 await update.message.reply_text(
                     f"🤖 Is this the record you want to save?\n\n{record}",
@@ -321,7 +326,7 @@ class RecordHandler(HandlerBase):
         if _record := context.user_data.get("record"):
             record = Record.model_validate(_record)
 
-        logging.info("Record read from user_data: %s", record.model_dump())
+        logger.info("Record read from user_data: %s", record.model_dump())
 
         try:
             # Pick the right keyboard to show
@@ -359,7 +364,7 @@ class RecordHandler(HandlerBase):
                 elif context.user_data["choice"] == RecordData.ACCOUNT.value:
                     data = {"account": _data}
                 else:
-                    logging.info(
+                    logger.info(
                         "User '%s' entered a date manually: %s",
                         update.effective_user,
                         _data,
@@ -370,13 +375,13 @@ class RecordHandler(HandlerBase):
             record = Record.model_validate({**record.model_dump(), **data})
 
         except ParserError as err:
-            logging.error("Date parsing failed: %s", err)
+            logger.error("Date parsing failed: %s", err)
             msg = f"⚠️ The date is not valid: {escape_md(err)}"
         except CurrencyParsingError as err:
-            logging.error("Currency parsing failed: %s", err)
+            logger.error("Currency parsing failed: %s", err)
             msg = f"⚠️ The amount is not valid: {escape_md(err)}"
         except Exception as err:
-            logging.error("Record validation failed: %s", err)
+            logger.error("Record validation failed: %s", err)
             msg = "⚠️ The record is not valid\."
         else:
             # All good, save the record
@@ -392,7 +397,7 @@ class RecordHandler(HandlerBase):
             # Update the record in the user data
             _record.update(record.model_dump())
 
-            logging.info("Record saved to user_data: %s", _record)
+            logger.info("Record saved to user_data: %s", _record)
 
             return INPUT
 
@@ -415,7 +420,7 @@ class RecordHandler(HandlerBase):
             try:
                 record.check_required_fields()
             except Exception as err:
-                logging.error("Record validation failed: %s", err)
+                logger.error("Record validation failed: %s", err)
 
                 await query.edit_message_text(
                     f"⚠️ The record is not valid\. {err}",
@@ -433,7 +438,7 @@ class RecordHandler(HandlerBase):
                     ),
                 )
 
-        logging.info("Records saved: %s", context.user_data["records"])
+        logger.info("Records saved: %s", context.user_data["records"])
 
         return INPUT
 
@@ -441,7 +446,7 @@ class RecordHandler(HandlerBase):
         """Cancel the record conversation"""
         reply_text = (
             "🛑 Action *cancelled*\. "
-            "You can use `/record` again or use `? record` for more information\."
+            "You can use `/record` again or use `?record` for more information\."
         )
 
         context.user_data["selected_month_year"] = None
