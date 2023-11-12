@@ -1,4 +1,5 @@
 import datetime as dt
+import io
 import logging
 import pathlib as pl
 import typing as t
@@ -70,12 +71,15 @@ class OpenAI:
 
     def __init__(self, config: t.Dict[str, t.Any]) -> None:
         """Initialize the OpenAI API wrapper"""
+        # Bot language
+        self.language: str = config.get("language", "en")
 
-        # OpenAI API config
+        # OpenAI API key
         self.api_key: str | None = config.get("api_key")
 
         # Set chosen model or use the default one
         self.model: str = config.get("model", "gpt-3-5-turbo")
+        self.whisper_model = "whisper-1"
 
         # Check that the API key is provided
         if not self.api_key:
@@ -118,5 +122,21 @@ class OpenAI:
 
         return response
 
-    async def get_transcription(self, audio_file: str | pl.Path) -> Transcription:
+    async def get_transcription(
+        self, audio_file: t.IO[bytes] | pl.Path
+    ) -> Transcription:
         """Transcribe an audio file"""
+        if isinstance(audio_file, pl.Path):
+            audio_file = io.BytesIO(audio_file.read_bytes())
+        try:
+            response = await self.client.audio.transcriptions.create(
+                file=audio_file, model=self.whisper_model, language=self.language
+            )
+        except FileNotFoundError:
+            logging.error(f"File '{audio_file.name}' cannot be found")
+            raise
+        except Exception:
+            logging.error("Error while performing an audio transcription API request")
+            raise
+
+        return response
