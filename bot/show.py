@@ -40,7 +40,7 @@ class ShowHandler(HandlerBase):
 
             reply_text = (
                 f"You saved *{len(records)}* record{'s' if len(records) > 1 else ''}:\n\n"
-                + "\n\n".join(
+                + "\n\n\n".join(
                     [
                         (
                             f"*__Record \#{i}__* "
