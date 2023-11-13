@@ -42,7 +42,7 @@ class FinanceTrackerBot:
             BotCommand("cancel", "Cancel the current operation"),
         ]
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def start(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """Start the bot"""
         if update.message:
             user_name = update.effective_user.first_name
@@ -68,7 +68,7 @@ class FinanceTrackerBot:
             "Here is a list of supported commands:\n\n"
             + "\n".join(commands)
             + "\n\nYou can always use a `?` followed by a command to obtain more information about it. "
-            "For example, `? record` will show you how to use the '/record' command."
+            "For example, `?record` will show you how to use the '/record' command."
         )
 
         if update.message:
@@ -114,8 +114,8 @@ class FinanceTrackerBot:
         ai_allowed_users: t.Set[int] = app.bot_data.setdefault(
             "ai_allowed_users", set()
         )
-        if self.config.get("ai_allowed_users"):
-            ai_allowed_users |= set(self.config["ai_allowed_users"])
+        if allowed_users := self.config.get("ai_allowed_users"):
+            ai_allowed_users |= set(allowed_users)
 
         logger.info("Post-init: AI allowed user IDs: %s", ai_allowed_users)
 
@@ -153,6 +153,7 @@ class FinanceTrackerBot:
         )
 
         # Custom handlers
+        # Just add each command's handlers to this list
         handlers: t.List[t.List[BaseHandler]] = [
             RecordHandler(self).handlers,
             ShowHandler(self).handlers,

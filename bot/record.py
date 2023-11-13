@@ -136,6 +136,14 @@ class RecordHandler(HandlerBase):
             "Use the buttons to enter the information\. "
             "When you are done, use the 'Save' button to save the record "
             "or the 'Cancel' button to discard it\.\n\n"
+            "__Natural language input:__\n\n"
+            "You can also add a record via two *natural inputs*: "
+            "a text message or a voice recording\. For example, you can send the message:\n\n"
+            "  _Yesterday I paid the rent: 1100€ on my UBS account_\n\n"
+            "The bot will try to understand your message and extract the details of the new record\. "
+            "You can always change any detail of the record before saving it\. "
+            "*Please note:* adding records with text messages or voice recordings requires some AI features\. "
+            "To enable them, you first need to login in the /settings menu\.\n\n"
             "__About the fields:__\n\n"
             "📅 *Date \(required\)*\n"
             "You can use any well\-known format, "
@@ -327,8 +335,7 @@ class RecordHandler(HandlerBase):
 
         if _record := context.user_data.get("record"):
             record = Record.model_validate(_record)
-
-        logger.info("Record read from user_data: %s", record.model_dump())
+            logger.info("Record read from user_data: %s", record.model_dump())
 
         try:
             # Pick the right keyboard to show

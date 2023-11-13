@@ -40,7 +40,11 @@ FUNCTIONS: t.List[ChatCompletionToolParam] = [
         "type": "function",
         "function": {
             "name": "parse_expense_income_record",
-            "description": "Parse an input string with the details of an expense record and return a dict representing the record. Translate in English if necessary.",
+            "description": (
+                "Parse an input string with the details of an expense record "
+                "and return a dict representing the record. "
+                "Translate in English if necessary."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -117,7 +121,8 @@ class OpenAI:
             {
                 "role": "system",
                 "content": "You are an helpful assistant. "
-                "Your task is to read a natural language input that describes expenses or income and extract meaningful details from them",
+                "Your task is to read a natural language input that describes "
+                "expense or income records and extract meaningful details from them",
             },
             {
                 "role": "user",
@@ -149,6 +154,7 @@ class OpenAI:
         """Transcribe an audio file"""
         if isinstance(audio_file, pl.Path):
             audio_file = io.BytesIO(audio_file.read_bytes())
+
         try:
             response = await self.client.audio.transcriptions.create(
                 file=audio_file, model=self.whisper_model, language=self.language
