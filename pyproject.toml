@@ -7,12 +7,16 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.12"
 gspread = "^5.12.0"
 python-dotenv = "^1.0.0"
-python-telegram-bot = "^20.6"
+python-telegram-bot = { extras = ["callback-data"], version = "^20.6" }
 pytz = "^2023.3.post1"
-
+python-dateutil = "^2.8.2"
+pydantic = "^2.4.2"
+tiktoken = "^0.5.1"
+openai = "^1.2.2"
+tenacity = "^8.2.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.10.1"
@@ -30,7 +34,12 @@ include = ["bot"]
 exclude = ["bot/old/*.py"]
 
 reportOptionalMemberAccess = "warning"
+reportOptionalSubscript = "warning"
 reportInvalidStringEscapeSequence = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "bot"]
 
 [tool.git-cliff.changelog]
 # changelog header

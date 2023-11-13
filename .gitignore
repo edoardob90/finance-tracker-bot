@@ -121,3 +121,5 @@ cython_debug/
 old/
 examples/
 data/
+*.pickle
+.config.toml
