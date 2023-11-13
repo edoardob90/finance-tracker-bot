@@ -1,16 +1,14 @@
 import datetime as dt
-import html
-import json
 import logging
-import os
-import traceback
 import typing as t
 from calendar import Calendar, day_abbr
+from functools import wraps
 
 from telegram import InlineKeyboardButton, Update
-from telegram.constants import ParseMode
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 from telegram.helpers import escape_markdown
+
+logger = logging.getLogger(__name__)
 
 
 def escape_md(text: str | t.Any) -> str:
@@ -18,37 +16,6 @@ def escape_md(text: str | t.Any) -> str:
     if not isinstance(text, str):
         return escape_markdown(str(text), version=2)
     return escape_markdown(text, version=2)
-
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log any error and send a warning message"""
-    developer_user_id = os.environ.get("DEVELOPER_USER_ID")
-
-    # First, log the error before doing anything else so we can see it in the logfile
-    logging.error(
-        msg="Exception raised while processing an update:", exc_info=context.error
-    )
-
-    # Format the traceback
-    tb_list = traceback.format_exception(
-        None, context.error, context.error.__traceback__ if context.error else None
-    )
-    tb_string = "".join(tb_list)
-    update_str = update.to_dict() if isinstance(update, Update) else str(update)
-    message = (
-        f"An exception was raised while handling an update\n"
-        f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
-        "</pre>\n\n"
-        f"<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
-        f"<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n"
-        f"<pre>{html.escape(tb_string)}</pre>"
-    )
-
-    # Notify the developer about the exception
-    if developer_user_id:
-        await context.bot.send_message(
-            chat_id=developer_user_id, text=message, parse_mode=ParseMode.HTML
-        )
 
 
 def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
@@ -64,9 +31,33 @@ def calendar_keyboard(date: dt.date) -> t.List[t.List[InlineKeyboardButton]]:
 
         return InlineKeyboardButton(
             text=str(day),
-            callback_data=f"{day:02d}/{date.month:02d}/{date.year}",
+            callback_data=dt.date(date.year, date.month, day),
         )
 
     calendar = [list(day_abbr)] + Calendar().monthdayscalendar(date.year, date.month)
 
     return [list(map(calendar_day_button, row)) for row in calendar]
+
+
+def requires_login(func: t.Callable) -> t.Callable:
+    """Requires a user to be logged in"""
+
+    @wraps(func)
+    async def wrapper(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> t.Any | None:
+        """Wrapper function"""
+
+        logger.info("Auth request from user with ID %s", update.effective_user.id)
+
+        allowed_users = context.bot_data.get("ai_allowed_users")
+
+        if allowed_users and update.effective_user.id in allowed_users:
+            return await func(self, update, context)
+        else:
+            await update.message.reply_text(
+                "You are not authorized to use the AI features of this bot\. Sorry\! 😞"
+            )
+            return ConversationHandler.END
+
+    return wrapper
